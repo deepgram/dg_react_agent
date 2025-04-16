@@ -197,6 +197,9 @@ export class WebSocketManager {
         };
 
         this.ws.onmessage = (event) => {
+          // Log the type of data received for every message
+          this.log(`Received message data type: ${typeof event.data}, is ArrayBuffer: ${event.data instanceof ArrayBuffer}, is Blob: ${event.data instanceof Blob}`);
+          
           if (typeof event.data === 'string') {
             try {
               this.log('Received raw string message:', event.data);
@@ -216,8 +219,31 @@ export class WebSocketManager {
               });
             }
           } else if (event.data instanceof ArrayBuffer) {
-            this.log('Received binary data');
+            this.log('Received ArrayBuffer binary data, emitting binary event...');
             this.emit({ type: 'binary', data: event.data });
+          } else if (event.data instanceof Blob) {
+            // Handle Blob data by converting to ArrayBuffer
+            this.log(`Received Blob binary data (size: ${event.data.size}), converting to ArrayBuffer...`);
+            
+            // Convert Blob to ArrayBuffer
+            event.data.arrayBuffer().then(arrayBuffer => {
+              this.log(`Converted Blob to ArrayBuffer (byteLength: ${arrayBuffer.byteLength}), emitting binary event...`);
+              this.emit({ type: 'binary', data: arrayBuffer });
+            }).catch(error => {
+              this.log('Error converting Blob to ArrayBuffer:', error);
+              this.emit({
+                type: 'error',
+                error: {
+                  service: this.options.service,
+                  code: 'blob_conversion_error',
+                  message: 'Failed to convert Blob to ArrayBuffer',
+                  details: error,
+                }
+              });
+            });
+          } else {
+            // Log if data is neither string, ArrayBuffer, nor Blob
+            this.log('Received message data of unexpected type:', event.data);
           }
         };
 

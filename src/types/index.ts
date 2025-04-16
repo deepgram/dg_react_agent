@@ -46,16 +46,96 @@ export interface TranscriptionOptions {
  */
 export interface AgentOptions {
   // Core parameters
-  model?: string;        // e.g., "aura-polaris"
   language?: string;     // e.g., "en-US"
-  voice?: string;        // e.g., "male-1"
   
-  // Agent behavior
+  // Listen settings
+  listenModel?: string;  // e.g., "nova-2"
+  
+  // Think settings
+  thinkProviderType?: string; // e.g., "open_ai", "anthropic", etc.
+  thinkModel?: string;   // e.g., "gpt-4-turbo", "claude-3-sonnet"
   instructions?: string; // Base instructions for the agent
+  
+  // Speak settings
+  voice?: string;        // e.g., "aura-asteria-en"
+  
+  // Optional greeting message
+  greeting?: string;
+  
+  // Function definitions for agent
+  functions?: AgentFunction[];
+  
+  // Additional settings
   endpointing?: boolean | number; // true or milliseconds
   
   // Any additional parameters Deepgram supports
   [key: string]: any;
+}
+
+/**
+ * Function definition for agent
+ */
+export interface AgentFunction {
+  name: string;
+  description: string;
+  parameters: any;
+  clientSide?: boolean;
+}
+
+/**
+ * Agent message types for new Voice Agent API
+ */
+export interface AgentSettingsMessage {
+  type: 'Settings';
+  audio: {
+    input: {
+      encoding: string;
+      sample_rate: number;
+    };
+    output?: {
+      encoding: string;
+      sample_rate: number;
+      bitrate?: number;
+      container?: string;
+    };
+  };
+  agent: {
+    language?: string;
+    listen?: {
+      provider: {
+        type: string;
+        model: string;
+        keyterms?: string[];
+      };
+    };
+    think: {
+      provider: {
+        type: string;
+        model: string;
+        temperature?: number;
+      };
+      endpoint?: {
+        url: string;
+        headers?: Record<string, string>;
+      };
+      functions?: AgentFunction[];
+      prompt?: string;
+    };
+    speak?: {
+      provider: {
+        type: string;
+        model?: string;
+        voice?: string;
+        model_id?: string;
+        language_code?: string;
+      };
+      endpoint?: {
+        url: string;
+        headers?: Record<string, string>;
+      };
+    };
+    greeting?: string;
+  };
 }
 
 /**
@@ -145,11 +225,6 @@ export interface DeepgramVoiceInteractionProps {
   endpointConfig?: EndpointConfig;
   
   /**
-   * URL to the AudioWorklet processor file
-   */
-  processorUrl?: string;
-  
-  /**
    * Called when the component is ready (initialized, mic permissions, etc.)
    */
   onReady?: (isReady: boolean) => void;
@@ -173,6 +248,11 @@ export interface DeepgramVoiceInteractionProps {
    * Called when the agent produces text output
    */
   onAgentUtterance?: (utterance: LLMResponse) => void;
+  
+  /**
+   * Called when audio playback state changes
+   */
+  onPlaybackStateChange?: (isPlaying: boolean) => void;
   
   /**
    * Called when the user starts speaking (based on VAD/endpointing)

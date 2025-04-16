@@ -1,125 +1,235 @@
-import { useState, useRef } from 'react'
-import './App.css'
+import React, { useRef, useState, useCallback } from 'react';
 import { 
-  DeepgramVoiceInteraction,
-  DeepgramVoiceInteractionHandle, 
+  DeepgramVoiceInteraction, 
+  DeepgramVoiceInteractionHandle,
+  TranscriptResponse,
+  LLMResponse,
+  AgentState,
+  ConnectionState,
+  ServiceType,
   DeepgramError
-} from '../../src' // Direct import from our src directory
-
-// Common shape of Deepgram responses
-interface DeepgramResponseBase {
-  type?: string
-  is_final?: boolean
-}
-
-// Real response object shape from Deepgram - for debugging only
-interface DeepgramDebugResponse extends DeepgramResponseBase {
-  [key: string]: any
-}
+} from '../../src';
 
 function App() {
-  const [isReady, setIsReady] = useState(false)
-  const [transcripts, setTranscripts] = useState<string[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const deepgramRef = useRef<DeepgramVoiceInteractionHandle>(null);
   
-  const dgRef = useRef<DeepgramVoiceInteractionHandle>(null)
-
-  const handleStart = async () => {
-    try {
-      setError(null)
-      await dgRef.current?.start()
-    } catch (err: Error | unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-      setError(errorMessage)
-    }
-  }
-
-  const handleStop = async () => {
-    try {
-      await dgRef.current?.stop()
-    } catch (err: Error | unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-      setError(errorMessage)
-    }
-  }
-
-  return (
-    <div className="App">
-      <h1>Deepgram Voice Interaction</h1>
+  // State for UI
+  const [isReady, setIsReady] = useState(false);
+  const [lastTranscript, setLastTranscript] = useState('');
+  const [agentResponse, setAgentResponse] = useState('');
+  const [agentState, setAgentState] = useState<AgentState>('idle');
+  const [isRecording, setIsRecording] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [connectionStates, setConnectionStates] = useState<Record<ServiceType, ConnectionState>>({
+    transcription: 'closed',
+    agent: 'closed'
+  });
+  const [logs, setLogs] = useState<string[]>([]);
+  
+  // Helper to add logs - memoized
+  const addLog = useCallback((message: string) => {
+    setLogs(prev => [...prev, `${new Date().toISOString().substring(11, 19)} - ${message}`]);
+  }, []); // No dependencies, created once
+  
+  // Event handlers - memoized with useCallback
+  const handleReady = useCallback((ready: boolean) => {
+    setIsReady(ready);
+    addLog(`Component is ${ready ? 'ready' : 'not ready'}`);
+  }, [addLog]); // Depends on addLog
+  
+  const handleTranscriptUpdate = useCallback((transcript: TranscriptResponse) => {
+    if (transcript.alternatives?.[0]?.transcript) {
+      const text = transcript.alternatives[0].transcript;
+      setLastTranscript(text); // Update interim transcripts
       
-      {/* Hidden component with no UI */}
-      <DeepgramVoiceInteraction 
-        ref={dgRef}
+      if (transcript.is_final) {
+        addLog(`Final transcript: ${text}`);
+      }
+    }
+  }, [addLog]); // Depends on addLog
+  
+  const handleAgentUtterance = useCallback((utterance: LLMResponse) => {
+    setAgentResponse(utterance.text);
+    addLog(`Agent said: ${utterance.text}`);
+  }, [addLog]); // Depends on addLog
+  
+  const handleAgentStateChange = useCallback((state: AgentState) => {
+    setAgentState(state);
+    addLog(`Agent state: ${state}`);
+  }, [addLog]); // Depends on addLog
+  
+  // Add a handler for audio playing status
+  const handlePlaybackStateChange = useCallback((isPlaying: boolean) => {
+    setIsPlaying(isPlaying);
+    addLog(`Audio playback: ${isPlaying ? 'started' : 'stopped'}`);
+  }, [addLog]);
+  
+  const handleConnectionStateChange = useCallback((service: ServiceType, state: ConnectionState) => {
+    setConnectionStates(prev => ({
+      ...prev,
+      [service]: state
+    }));
+    addLog(`${service} connection state: ${state}`);
+  }, [addLog]); // Depends on addLog
+  
+  const handleError = useCallback((error: DeepgramError) => {
+    addLog(`Error (${error.service}): ${error.message}`);
+    console.error('Deepgram error:', error);
+  }, [addLog]); // Depends on addLog
+  
+  // Control functions
+  const startInteraction = async () => {
+    try {
+      await deepgramRef.current?.start();
+      setIsRecording(true);
+      addLog('Started interaction');
+    } catch (error) {
+      addLog(`Error starting: ${(error as Error).message}`);
+      console.error('Start error:', error);
+    }
+  };
+  
+  const stopInteraction = async () => {
+    try {
+      await deepgramRef.current?.stop();
+      setIsRecording(false);
+      addLog('Stopped interaction');
+    } catch (error) {
+      addLog(`Error stopping: ${(error as Error).message}`);
+      console.error('Stop error:', error);
+    }
+  };
+  
+  const interruptAgent = () => {
+    deepgramRef.current?.interruptAgent();
+    addLog('Interrupted agent');
+  };
+  
+  const updateContext = () => {
+    deepgramRef.current?.updateAgentInstructions({
+      context: `The current time is ${new Date().toLocaleTimeString()}.`
+    });
+    addLog('Updated agent context');
+  };
+  
+  return (
+    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
+      <h1>Deepgram Voice Interaction Test</h1>
+      
+      <DeepgramVoiceInteraction
+        ref={deepgramRef}
         apiKey={import.meta.env.VITE_DEEPGRAM_API_KEY || ''}
         transcriptionOptions={{
           model: 'nova-2',
           language: 'en-US',
           smart_format: true,
-          punctuate: true,
-          interim_results: true,
-          sample_rate: 16000,
-          encoding: 'linear16',
-          channels: 1
+          interim_results: true
         }}
-        processorUrl="/AudioWorkletProcessor.js" // Path to the AudioWorklet in public dir
-        onReady={setIsReady}
-        onTranscriptUpdate={(transcript: DeepgramDebugResponse) => {
-          console.log('Transcript:', JSON.stringify(transcript, null, 2));
-          
-          // Only process final transcripts
-          if (transcript.is_final) {
-            let text = '';
-            
-            // Handle different response formats
-            
-            // Nova-2 format with channel
-            if (transcript.channel?.alternatives?.[0]?.transcript) {
-              text = transcript.channel.alternatives[0].transcript;
-            } 
-            // Classic format with alternatives array
-            else if (transcript.alternatives?.[0]?.transcript) {
-              text = transcript.alternatives[0].transcript;
-            }
-            // Other possible formats?
-            else if (typeof transcript.transcript === 'string') {
-              text = transcript.transcript;
-            }
-            
-            if (text && text.trim()) {
-              console.log('Final transcript:', text);
-              setTranscripts(prev => [...prev, text]);
-            }
-          }
+        agentOptions={{
+          language: 'en',
+          listenModel: 'nova-2',
+          thinkProviderType: 'open_ai',
+          thinkModel: 'gpt-4o-mini',
+          voice: 'aura-2-apollo-en',
+          instructions: 'You are a helpful voice assistant. Keep your responses concise and informative.',
+          greeting: 'Hello! How can I assist you today?'
         }}
-        onError={(error: DeepgramError) => {
-          console.error('Error:', error)
-          setError(error.message)
-        }}
+        onReady={handleReady}
+        onTranscriptUpdate={handleTranscriptUpdate}
+        onAgentUtterance={handleAgentUtterance}
+        onAgentStateChange={handleAgentStateChange}
+        onConnectionStateChange={handleConnectionStateChange}
+        onError={handleError}
+        onPlaybackStateChange={handlePlaybackStateChange}
         debug={true}
       />
       
-      <div className="controls">
-        <button onClick={handleStart} disabled={isReady}>Start</button>
-        <button onClick={handleStop} disabled={!isReady}>Stop</button>
-      </div>
-      
-      <div className="status">
-        <div>Status: {isReady ? 'Ready' : 'Not ready'}</div>
-        {error && <div className="error">Error: {error}</div>}
-      </div>
-      
-      <div className="transcripts">
-        <h2>Transcripts</h2>
-        {transcripts.length === 0 ? (
-          <div>No transcripts yet. Start speaking after connecting.</div>
+      <div style={{ margin: '20px 0', display: 'flex', gap: '10px' }}>
+        {!isRecording ? (
+          <button 
+            onClick={startInteraction} 
+            disabled={!isReady}
+            style={{ padding: '10px 20px' }}
+          >
+            Start
+          </button>
         ) : (
-          <ul>
-            {transcripts.map((text, i) => <li key={i}>{text}</li>)}
-          </ul>
+          <button 
+            onClick={stopInteraction}
+            style={{ padding: '10px 20px' }}
+          >
+            Stop
+          </button>
         )}
+        
+        <button 
+          onClick={interruptAgent} 
+          disabled={!isRecording || agentState !== 'speaking'}
+          style={{ padding: '10px 20px' }}
+        >
+          Interrupt Agent
+        </button>
+        
+        <button 
+          onClick={updateContext}
+          disabled={!isRecording}
+          style={{ padding: '10px 20px' }}
+        >
+          Update Context
+        </button>
+      </div>
+      
+      <div style={{ marginBottom: '20px' }}>
+        <h2>Status</h2>
+        <p><strong>Component ready:</strong> {isReady ? 'Yes' : 'No'}</p>
+        <p><strong>Transcription connection:</strong> {connectionStates.transcription}</p>
+        <p><strong>Agent connection:</strong> {connectionStates.agent}</p>
+        <p><strong>Agent state:</strong> {agentState}</p>
+        <p>
+          <strong>Audio: </strong>
+          {isPlaying && (
+            <span style={{ 
+              display: 'inline-block',
+              width: '12px',
+              height: '12px',
+              borderRadius: '50%',
+              backgroundColor: '#4CAF50',
+              marginRight: '5px',
+              animation: 'pulse 1s infinite'
+            }}></span>
+          )}
+          {isPlaying ? 'Playing' : 'Silent'}
+        </p>
+      </div>
+      
+      <div style={{ marginBottom: '20px' }}>
+        <h2>Conversation</h2>
+        <div style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px', minHeight: '50px' }}>
+          <strong>Your speech:</strong> {lastTranscript || '(No transcription yet)'}
+        </div>
+        <div style={{ border: '1px solid #ccc', padding: '10px', minHeight: '50px' }}>
+          <strong>Agent response:</strong> {agentResponse || '(No response yet)'}
+        </div>
+      </div>
+      
+      <div>
+        <h2>Logs</h2>
+        <div style={{ 
+          border: '1px solid #ccc', 
+          padding: '10px', 
+          height: '200px', 
+          overflowY: 'scroll',
+          fontFamily: 'monospace',
+          fontSize: '12px',
+          backgroundColor: '#f5f5f5'
+        }}>
+          {logs.map((log, index) => (
+            <div key={index}>{log}</div>
+          ))}
+        </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

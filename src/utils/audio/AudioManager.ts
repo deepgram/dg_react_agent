@@ -1,4 +1,7 @@
 import { DeepgramError } from '../../types';
+// Import the inlined worklet code - add ?url suffix
+import audioWorkletProcessorUrl from './AudioWorkletProcessor.js?url';
+import { createAudioBuffer, playAudioBuffer } from './AudioUtils';
 
 /**
  * Event types emitted by the AudioManager
@@ -15,14 +18,24 @@ export type AudioEvent =
  */
 export interface AudioManagerOptions {
   /**
-   * Worklet processor URL
-   */
-  processorUrl: string;
-  
-  /**
    * Target sample rate for microphone capture
    */
   sampleRate?: number;
+  
+  /**
+   * Output sample rate for agent audio
+   */
+  outputSampleRate?: number;
+  
+  /**
+   * Enable volume normalization
+   */
+  normalizeVolume?: boolean;
+  
+  /**
+   * Volume normalization factor (higher = quieter)
+   */
+  normalizationFactor?: number;
   
   /**
    * Enable verbose logging
@@ -35,6 +48,9 @@ export interface AudioManagerOptions {
  */
 const DEFAULT_OPTIONS: Partial<AudioManagerOptions> = {
   sampleRate: 16000,
+  outputSampleRate: 24000,
+  normalizeVolume: true,
+  normalizationFactor: 128,
   debug: false,
 };
 
@@ -42,7 +58,7 @@ const DEFAULT_OPTIONS: Partial<AudioManagerOptions> = {
  * Manages audio capture and playback
  */
 export class AudioManager {
-  private options: AudioManagerOptions;
+  private options: Omit<AudioManagerOptions, 'processorUrl'>; // processorUrl is no longer needed
   private audioContext: AudioContext | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private microphoneStream: MediaStream | null = null;
@@ -51,14 +67,17 @@ export class AudioManager {
   private isPlaying = false;
   private isInitialized = false;
   private eventListeners: Array<(event: AudioEvent) => void> = [];
-  private audioQueue: Array<AudioBuffer> = [];
+  
+  // Improved audio playback variables
+  private startTimeRef = { current: 0 };
+  private analyzer: AnalyserNode | null = null;
+  private analyzerData: Uint8Array | null = null;
   private currentSource: AudioBufferSourceNode | null = null;
-  private processingAudio = false;
   
   /**
    * Creates a new AudioManager
    */
-  constructor(options: AudioManagerOptions) {
+  constructor(options: Omit<AudioManagerOptions, 'processorUrl'>) { // Update constructor options
     this.options = { ...DEFAULT_OPTIONS, ...options };
     this.log('AudioManager created');
   }
@@ -112,9 +131,20 @@ export class AudioManager {
         latencyHint: 'interactive',
       });
       
-      // Load the AudioWorklet processor
-      await this.audioContext.audioWorklet.addModule(this.options.processorUrl);
-      this.log('AudioWorklet loaded');
+      // Create analyzer for volume normalization
+      if (this.options.normalizeVolume) {
+        this.analyzer = this.audioContext.createAnalyser();
+        this.analyzer.fftSize = 1024;
+        this.analyzerData = new Uint8Array(this.analyzer.frequencyBinCount);
+        this.log('Created audio analyzer for volume normalization');
+      }
+      
+      // Reset start time reference
+      this.startTimeRef.current = 0;
+      
+      // Load the AudioWorklet processor using the imported Data URI
+      await this.audioContext.audioWorklet.addModule(audioWorkletProcessorUrl);
+      this.log('AudioWorklet loaded from Data URI');
       
       this.isInitialized = true;
       this.emit({ type: 'ready' });
@@ -246,102 +276,92 @@ export class AudioManager {
   }
   
   /**
-   * Queues audio data for playback
+   * Queues audio data for playback using precise timing
+   * @param data ArrayBuffer containing audio data (Linear16 PCM expected)
    */
   public async queueAudio(data: ArrayBuffer): Promise<void> {
     if (!this.isInitialized) {
+      this.log('AudioManager not initialized, initializing now...');
       await this.initialize();
+      this.log('AudioManager initialized from queueAudio');
     }
     
     try {
-      // Decode the audio data
-      const audioBuffer = await this.audioContext!.decodeAudioData(data);
+      this.log(`Processing audio data (${data.byteLength} bytes)...`);
       
-      // Add to queue
-      this.audioQueue.push(audioBuffer);
-      this.log(`Queued audio chunk (${audioBuffer.duration.toFixed(2)}s), queue size: ${this.audioQueue.length}`);
+      // Create an audio buffer from the raw data
+      const buffer = createAudioBuffer(
+        this.audioContext!, 
+        data, 
+        this.options.outputSampleRate!
+      );
       
-      // Start processing if not already
-      if (!this.processingAudio) {
-        this.processAudioQueue();
+      if (!buffer) {
+        throw new Error('Failed to create audio buffer: buffer is undefined');
       }
+      
+      this.log(`Successfully created audio buffer (${buffer.duration.toFixed(3)}s)`);
+      
+      // Play the buffer with precise timing
+      this.currentSource = playAudioBuffer(
+        this.audioContext!, 
+        buffer, 
+        this.startTimeRef, 
+        this.analyzer || undefined
+      );
+      
+      // Set playing state
+      const wasPlaying = this.isPlaying;
+      this.isPlaying = true;
+      
+      // Emit playing event only if starting playback
+      if (!wasPlaying) {
+        this.emit({ type: 'playing', isPlaying: true });
+      }
+      
+      // Set up ended handler for the last chunk
+      this.currentSource.onended = () => {
+        this.log('Current audio source playback ended');
+        
+        // Only emit playing=false if this was the last scheduled chunk
+        const currentTime = this.audioContext!.currentTime;
+        if (this.startTimeRef.current <= currentTime + 0.05) { // Small buffer to account for timing precision
+          this.isPlaying = false;
+          this.emit({ type: 'playing', isPlaying: false });
+        }
+      };
+      
+      this.log(`Audio scheduled to play at ${this.startTimeRef.current.toFixed(3)}s, current time: ${this.audioContext!.currentTime.toFixed(3)}s`);
+      
     } catch (error) {
-      this.log('Failed to decode audio:', error);
+      this.log('Failed to process audio:', error);
       this.emit({
         type: 'error',
         error: {
           service: 'agent',
-          code: 'audio_decode_error',
-          message: 'Failed to decode audio data',
+          code: 'audio_process_error',
+          message: 'Failed to process audio data',
           details: error,
         },
       });
+      throw error; // Re-throw to be caught by caller
     }
   }
   
   /**
-   * Processes the audio queue
-   */
-  private async processAudioQueue(): Promise<void> {
-    if (this.processingAudio || this.audioQueue.length === 0) {
-      return;
-    }
-    
-    this.processingAudio = true;
-    
-    while (this.audioQueue.length > 0) {
-      // Get the next buffer
-      const buffer = this.audioQueue.shift()!;
-      
-      try {
-        // Play the buffer
-        await this.playBuffer(buffer);
-      } catch (error) {
-        this.log('Error playing audio:', error);
-        // Continue with next buffer on error
-      }
-    }
-    
-    this.processingAudio = false;
-  }
-  
-  /**
-   * Plays an audio buffer
-   */
-  private playBuffer(buffer: AudioBuffer): Promise<void> {
-    return new Promise((resolve) => {
-      // Create a source node
-      const source = this.audioContext!.createBufferSource();
-      source.buffer = buffer;
-      
-      // Connect to destination
-      source.connect(this.audioContext!.destination);
-      
-      // Set up completion handler
-      source.onended = () => {
-        this.log('Audio playback finished');
-        this.currentSource = null;
-        this.isPlaying = false;
-        this.emit({ type: 'playing', isPlaying: false });
-        resolve();
-      };
-      
-      // Start playback
-      this.currentSource = source;
-      source.start();
-      this.isPlaying = true;
-      this.emit({ type: 'playing', isPlaying: true });
-      this.log('Audio playback started');
-    });
-  }
-  
-  /**
-   * Stops all audio playback and clears the queue
+   * Stops all audio playback and clears scheduled audio
    */
   public clearAudioQueue(): void {
     this.log('Clearing audio queue');
     
-    // Stop current playback
+    if (!this.audioContext) {
+      return;
+    }
+    
+    // Reset the timing reference to stop future scheduling
+    this.startTimeRef.current = this.audioContext.currentTime;
+    
+    // If we have a current source, stop it
     if (this.currentSource) {
       try {
         this.currentSource.stop();
@@ -352,11 +372,7 @@ export class AudioManager {
       this.currentSource = null;
     }
     
-    // Clear queue
-    this.audioQueue = [];
-    
     this.isPlaying = false;
-    this.processingAudio = false;
     this.emit({ type: 'playing', isPlaying: false });
   }
   
@@ -388,6 +404,12 @@ export class AudioManager {
     
     this.stopRecording();
     this.clearAudioQueue();
+    
+    if (this.analyzer) {
+      this.analyzer.disconnect();
+      this.analyzer = null;
+      this.analyzerData = null;
+    }
     
     if (this.audioContext) {
       this.audioContext.close();

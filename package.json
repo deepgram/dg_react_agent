@@ -36,6 +36,7 @@
     "@rollup/plugin-commonjs": "^22.0.0",
     "@rollup/plugin-node-resolve": "^13.3.0",
     "@rollup/plugin-typescript": "^8.3.2",
+    "@rollup/plugin-url": "^8.0.2",
     "@types/jest": "^28.1.1",
     "@types/react": "^18.3.20",
     "@types/react-dom": "^18.3.6",

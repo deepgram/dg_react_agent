@@ -4,6 +4,7 @@ import typescript from '@rollup/plugin-typescript';
 import { terser } from 'rollup-plugin-terser';
 import peerDepsExternal from 'rollup-plugin-peer-deps-external';
 import cleaner from 'rollup-plugin-cleaner';
+import url from '@rollup/plugin-url';
 import packageJson from './package.json';
 
 export default {
@@ -28,6 +29,15 @@ export default {
     
     // Exclude peer dependencies from the bundle
     peerDepsExternal(),
+    
+    // Inline the AudioWorkletProcessor.js file as a data URI
+    url({
+      include: ['**/*.js'],
+      limit: Infinity,
+      fileName: '[dirname][name][extname]',
+      publicPath: '/',
+      filter: (id) => id.endsWith('AudioWorkletProcessor.js')
+    }),
     
     // Resolve third-party modules
     resolve({
@@ -54,8 +64,4 @@ export default {
   ],
   // Preserve modules for tree shaking
   preserveModules: false,
-  // Don't bundle audio worklet processor
-  external: (id) => {
-    return id.includes('AudioWorkletProcessor.js');
-  },
 }; 

@@ -26,7 +26,7 @@ const DEFAULT_WORKLET_PROCESSOR_URL = new URL('../../utils/audio/AudioWorkletPro
 // Default endpoints
 const DEFAULT_ENDPOINTS = {
   transcriptionUrl: 'wss://api.deepgram.com/v1/listen',
-  agentUrl: 'wss://api.deepgram.com/v1/agent',
+  agentUrl: 'wss://agent.deepgram.com/v1/agent/converse',
 };
 
 /**
@@ -43,7 +43,6 @@ function DeepgramVoiceInteraction(
     transcriptionOptions = {},
     agentOptions = {},
     endpointConfig = {},
-    processorUrl,
     onReady,
     onConnectionStateChange,
     onTranscriptUpdate,
@@ -51,19 +50,17 @@ function DeepgramVoiceInteraction(
     onAgentUtterance,
     onUserStartedSpeaking,
     onUserStoppedSpeaking,
+    onPlaybackStateChange,
     onError,
     debug = false,
   } = props;
-
-  // Use the provided processor URL or fall back to the default
-  const workletProcessorUrl = processorUrl || DEFAULT_WORKLET_PROCESSOR_URL;
 
   // Internal state
   const [state, dispatch] = useReducer(stateReducer, initialState);
 
   // Managers
   const transcriptionManagerRef = useRef<WebSocketManager | null>(null);
-  // const agentManagerRef = useRef<WebSocketManager | null>(null);
+  const agentManagerRef = useRef<WebSocketManager | null>(null);
   const audioManagerRef = useRef<AudioManager | null>(null);
   
   // Tracking user speaking state
@@ -98,7 +95,7 @@ function DeepgramVoiceInteraction(
     // Prepare endpoints
     const endpoints = {
       transcriptionUrl: endpointConfig.transcriptionUrl || DEFAULT_ENDPOINTS.transcriptionUrl,
-      // agentUrl: endpointConfig.agentUrl || DEFAULT_ENDPOINTS.agentUrl,
+      agentUrl: endpointConfig.agentUrl || DEFAULT_ENDPOINTS.agentUrl,
     };
 
     // Ensure audio format parameters are set for transcription
@@ -119,19 +116,17 @@ function DeepgramVoiceInteraction(
       debug,
     });
 
-    /* Comment out agent manager
+    // Create agent WebSocket manager
     agentManagerRef.current = new WebSocketManager({
       url: endpoints.agentUrl,
       apiKey,
       service: 'agent',
-      queryParams: agentOptions as Record<string, string | boolean | number>,
+      // No query params for agent - we'll send settings after connection
       debug,
     });
-    */
 
     // Create audio manager
     audioManagerRef.current = new AudioManager({
-      processorUrl: workletProcessorUrl,
       debug,
     });
 
@@ -148,13 +143,17 @@ function DeepgramVoiceInteraction(
       }
     });
 
-    /* Comment out agent WebSocket event listeners
     // Set up event listeners for agent WebSocket
     const agentUnsubscribe = agentManagerRef.current.addEventListener((event) => {
       if (event.type === 'state') {
         log('Agent state:', event.state);
         dispatch({ type: 'CONNECTION_STATE_CHANGE', service: 'agent', state: event.state });
         onConnectionStateChange?.('agent', event.state);
+        
+        // Send settings message when connection is established
+        if (event.state === 'connected') {
+          sendAgentSettings();
+        }
       } else if (event.type === 'message') {
         handleAgentMessage(event.data);
       } else if (event.type === 'binary') {
@@ -163,7 +162,6 @@ function DeepgramVoiceInteraction(
         handleError(event.error);
       }
     });
-    */
 
     // Set up event listeners for audio manager
     const audioUnsubscribe = audioManagerRef.current.addEventListener((event) => {
@@ -184,6 +182,11 @@ function DeepgramVoiceInteraction(
 
     // Initialize audio manager
     audioManagerRef.current.initialize()
+      .then(() => {
+        log('AudioManager initialized successfully in useEffect');
+        // Signal ready now that audio is initialized
+        dispatch({ type: 'READY_STATE_CHANGE', isReady: true }); 
+      })
       .catch(error => {
         handleError({
           service: 'transcription',
@@ -191,35 +194,48 @@ function DeepgramVoiceInteraction(
           message: 'Failed to initialize audio',
           details: error,
         });
+        // Signal not ready on initialization failure
+        dispatch({ type: 'READY_STATE_CHANGE', isReady: false });
       });
 
     // Clean up
     return () => {
       transcriptionUnsubscribe();
-      // agentUnsubscribe(); // Comment out agent cleanup
+      agentUnsubscribe();
       audioUnsubscribe();
       
       transcriptionManagerRef.current?.close();
-      // agentManagerRef.current?.close(); // Comment out agent cleanup
+      agentManagerRef.current?.close();
       audioManagerRef.current?.dispose();
       
       transcriptionManagerRef.current = null;
-      // agentManagerRef.current = null; // Comment out agent cleanup
+      agentManagerRef.current = null;
       audioManagerRef.current = null;
+      
+      // Ensure state is reset on unmount
+      dispatch({ type: 'READY_STATE_CHANGE', isReady: false });
+      dispatch({ type: 'CONNECTION_STATE_CHANGE', service: 'transcription', state: 'closed' });
+      dispatch({ type: 'CONNECTION_STATE_CHANGE', service: 'agent', state: 'closed' });
+      dispatch({ type: 'AGENT_STATE_CHANGE', state: 'idle' });
+      dispatch({ type: 'RECORDING_STATE_CHANGE', isRecording: false });
+      dispatch({ type: 'PLAYBACK_STATE_CHANGE', isPlaying: false });
     };
-  }, [apiKey, workletProcessorUrl]);
+  }, [apiKey]);
 
   // Notify ready state changes
   useEffect(() => {
     onReady?.(state.isReady);
   }, [state.isReady, onReady]);
 
-  // Notify agent state changes - comment out
-  /*
+  // Notify agent state changes
   useEffect(() => {
     onAgentStateChange?.(state.agentState);
   }, [state.agentState, onAgentStateChange]);
-  */
+
+  // Notify playback state changes
+  useEffect(() => {
+    onPlaybackStateChange?.(state.isPlaying);
+  }, [state.isPlaying, onPlaybackStateChange]);
 
   // Handle transcription messages
   const handleTranscriptionMessage = (data: any) => {
@@ -247,30 +263,94 @@ function DeepgramVoiceInteraction(
     }
   };
 
-  /* Comment out agent message handler
+  // Send agent settings after connection is established
+  const sendAgentSettings = () => {
+    if (!agentManagerRef.current) return;
+    
+    // Build the Settings message based on agentOptions
+    const settingsMessage = {
+      type: 'Settings',
+      audio: {
+        input: {
+          encoding: 'linear16',
+          sample_rate: 16000
+        },
+        output: {
+          encoding: 'linear16',
+          sample_rate: 24000
+        }
+      },
+      agent: {
+        language: agentOptions.language || 'en',
+        listen: {
+          provider: {
+            type: 'deepgram',
+            model: agentOptions.listenModel || 'nova-2'
+          }
+        },
+        think: {
+          provider: {
+            type: agentOptions.thinkProviderType || 'open_ai',
+            model: agentOptions.thinkModel || 'gpt-4o-mini'
+          },
+          prompt: agentOptions.instructions || 'You are a helpful voice assistant.'
+        },
+        speak: {
+          provider: {
+            type: 'deepgram',
+            model: agentOptions.voice || 'aura-asteria-en'
+          }
+        },
+        greeting: agentOptions.greeting
+      }
+    };
+    
+    log('Sending agent settings:', settingsMessage);
+    agentManagerRef.current.sendJSON(settingsMessage);
+  };
+
   // Handle agent messages
   const handleAgentMessage = (data: any) => {
-    // Handle state changes
-    if (data.type === 'Status') {
-      let newState: AgentState = 'idle';
-      
-      if (data.status === 'listening') {
-        newState = 'listening';
-      } else if (data.status === 'thinking') {
-        newState = 'thinking';
-      } else if (data.status === 'responding') {
-        newState = 'speaking';
-      }
-      
-      dispatch({ type: 'AGENT_STATE_CHANGE', state: newState });
+    log('Received agent message:', data);
+    
+    // Handle Settings Applied confirmation
+    if (data.type === 'SettingsApplied') {
+      log('Agent settings applied successfully');
       return;
     }
     
-    // Handle LLM responses
-    if (data.type === 'AgentResponse' || data.type === 'llm') {
+    // Handle Welcome message 
+    if (data.type === 'Welcome') {
+      log('Connected to agent service:', data.request_id);
+      return;
+    }
+    
+    // Handle agent state messages
+    if (data.type === 'UserStartedSpeaking') {
+      dispatch({ type: 'AGENT_STATE_CHANGE', state: 'listening' });
+      return;
+    }
+    
+    if (data.type === 'AgentThinking') {
+      dispatch({ type: 'AGENT_STATE_CHANGE', state: 'thinking' });
+      return;
+    }
+    
+    if (data.type === 'AgentStartedSpeaking') {
+      dispatch({ type: 'AGENT_STATE_CHANGE', state: 'speaking' });
+      return;
+    }
+    
+    if (data.type === 'AgentAudioDone') {
+      dispatch({ type: 'AGENT_STATE_CHANGE', state: 'idle' });
+      return;
+    }
+    
+    // Handle conversation text
+    if (data.type === 'ConversationText' && data.role === 'assistant') {
       const response: LLMResponse = {
         type: 'llm',
-        text: data.text || data.content || '',
+        text: data.content || '',
         metadata: data,
       };
       
@@ -282,81 +362,111 @@ function DeepgramVoiceInteraction(
     if (data.type === 'Error') {
       handleError({
         service: 'agent',
-        code: data.error_type || 'agent_error',
-        message: data.message || 'Unknown agent error',
+        code: data.code || 'agent_error',
+        message: data.description || 'Unknown agent error',
         details: data,
       });
       return;
     }
-  };
-  */
-
-  /* Comment out agent audio handler
-  // Handle agent audio
-  const handleAgentAudio = (data: ArrayBuffer) => {
-    if (audioManagerRef.current) {
-      audioManagerRef.current.queueAudio(data).catch(error => {
-        log('Error queueing audio:', error);
-      });
+    
+    // Handle warnings
+    if (data.type === 'Warning') {
+      log('Agent warning:', data.description, 'Code:', data.code);
+      return;
     }
   };
-  */
 
-  // Send audio data to only the transcription WebSocket
+  // Handle agent audio
+  const handleAgentAudio = (data: ArrayBuffer) => {
+    log(`handleAgentAudio called! Received buffer of ${data.byteLength} bytes`);
+    
+    if (audioManagerRef.current) {
+      log('Passing buffer to AudioManager.queueAudio()');
+      audioManagerRef.current.queueAudio(data)
+        .then(() => {
+          log('Successfully queued audio buffer for playback');
+        })
+        .catch(error => {
+          log('Error queueing audio:', error);
+        });
+    } else {
+      log('Cannot queue audio: audioManagerRef.current is null');
+    }
+  };
+
+  // Send audio data to WebSockets
   const sendAudioData = (data: ArrayBuffer) => {
     if (transcriptionManagerRef.current) {
       transcriptionManagerRef.current.sendBinary(data);
     }
     
-    /* Comment out sending to agent
-    if (agentManagerRef.current) {
+    if (agentManagerRef.current && agentManagerRef.current.getState() === 'connected') {
       agentManagerRef.current.sendBinary(data);
     }
-    */
   };
 
   // Start the connection
   const start = async (): Promise<void> => {
     try {
-      log('Starting transcription');
+      log('Start method called'); // Log entry
       
-      // Initialize audio manager if not already
-      if (audioManagerRef.current) {
-        await audioManagerRef.current.initialize();
-      }
+      // Initialize audio manager if not already - Removed check, should be initialized by useEffect
+      // if (audioManagerRef.current) { ... } - Check assumed true here
       
+      log('Initializing AudioManager (start method - re-check)...');
+      await audioManagerRef.current!.initialize(); // Ensure initialized if needed
+      log('AudioManager initialized (start method - re-check)');
+
       // Connect WebSockets
       if (transcriptionManagerRef.current) {
+        log('Connecting Transcription WebSocket...');
         await transcriptionManagerRef.current.connect();
+        log('Transcription WebSocket connected');
+      } else {
+        log('Transcription manager ref is null');
+        throw new Error('Transcription manager not available');
       }
       
-      /* Comment out agent connection
       if (agentManagerRef.current) {
+        log('Connecting Agent WebSocket...');
         await agentManagerRef.current.connect();
+        log('Agent WebSocket connected');
+      } else {
+        log('Agent manager ref is null');
+        throw new Error('Agent manager not available');
       }
-      */
       
       // Start recording
       if (audioManagerRef.current) {
+        log('Starting recording...');
         await audioManagerRef.current.startRecording();
+        log('Recording started');
+      } else {
+        // This case should be caught earlier, but added for completeness
+        log('AudioManager ref is null before starting recording');
+        throw new Error('Audio manager not available for recording');
       }
       
-      dispatch({ type: 'READY_STATE_CHANGE', isReady: true });
+      // log('Dispatching READY_STATE_CHANGE to true'); // Removed - now done in useEffect
+      // dispatch({ type: 'READY_STATE_CHANGE', isReady: true }); // Removed
+      log('Start method completed successfully'); // Log success
     } catch (error) {
-      log('Error starting:', error);
+      log('Error within start method:', error); // Log internal error
       handleError({
-        service: 'transcription',
+        service: 'transcription', // Or determine service based on error source
         code: 'start_error',
         message: 'Failed to start voice interaction',
         details: error,
       });
-      throw error;
+      // Signal not ready on start failure
+      dispatch({ type: 'READY_STATE_CHANGE', isReady: false });
+      throw error; // Re-throw to be caught by the caller if needed
     }
   };
 
   // Stop the connection
   const stop = async (): Promise<void> => {
-    log('Stopping transcription');
+    log('Stopping voice interaction');
     
     try {
       // Send CloseStream message to finalize any pending transcriptions
@@ -378,13 +488,12 @@ function DeepgramVoiceInteraction(
         transcriptionManagerRef.current.close();
       }
       
-      /* Comment out agent closing
       if (agentManagerRef.current) {
         agentManagerRef.current.close();
       }
-      */
       
-      dispatch({ type: 'READY_STATE_CHANGE', isReady: false });
+      // Signal not ready after stopping
+      dispatch({ type: 'READY_STATE_CHANGE', isReady: false }); 
       return Promise.resolve();
     } catch (error) {
       log('Error stopping:', error);
@@ -394,11 +503,12 @@ function DeepgramVoiceInteraction(
         message: 'Error while stopping transcription',
         details: error,
       });
+      // Signal not ready on stop failure
+      dispatch({ type: 'READY_STATE_CHANGE', isReady: false });
       return Promise.reject(error);
     }
   };
 
-  /* Comment out agent methods
   // Update agent instructions
   const updateAgentInstructions = (payload: UpdateInstructionsPayload): void => {
     if (!agentManagerRef.current) {
@@ -408,9 +518,10 @@ function DeepgramVoiceInteraction(
     
     log('Updating agent instructions:', payload);
     
+    // Use UpdatePrompt message for the new agent API
     agentManagerRef.current.sendJSON({
-      type: 'Update',
-      ...payload,
+      type: 'UpdatePrompt',
+      prompt: payload.instructions || payload.context || '',
     });
   };
 
@@ -423,25 +534,25 @@ function DeepgramVoiceInteraction(
       audioManagerRef.current.clearAudioQueue();
     }
     
-    // Send interrupt command to agent
+    // For the new agent API, we need to send an InjectAgentMessage
+    // with empty content to stop current playback
     if (agentManagerRef.current) {
       agentManagerRef.current.sendJSON({
-        type: 'Interrupt',
+        type: 'InjectAgentMessage',
+        content: ''
       });
     }
+    
+    // Reset agent state to idle
+    dispatch({ type: 'AGENT_STATE_CHANGE', state: 'idle' });
   };
-  */
 
   // Expose methods via ref - keep only start/stop, comment out agent methods
   useImperativeHandle(ref, () => ({
     start,
     stop,
-    updateAgentInstructions: () => {
-      log('Agent functionality is disabled');
-    },
-    interruptAgent: () => {
-      log('Agent functionality is disabled');
-    },
+    updateAgentInstructions,
+    interruptAgent,
   }));
 
   // Render nothing (headless component)
