@@ -101,8 +101,15 @@ function App() {
   };
   
   const interruptAgent = () => {
-    deepgramRef.current?.interruptAgent();
-    addLog('Interrupted agent');
+    console.log('🚨 Interrupt button clicked!');
+    addLog('🔇 Interrupting agent - attempting to stop all audio');
+    
+    if (deepgramRef.current) {
+      deepgramRef.current.interruptAgent();
+      console.log('✅ interruptAgent() method called');
+    } else {
+      console.error('❌ deepgramRef.current is null!');
+    }
   };
   
   const updateContext = () => {
@@ -161,15 +168,13 @@ function App() {
             Stop
           </button>
         )}
-        
         <button 
-          onClick={interruptAgent} 
-          disabled={!isRecording || agentState !== 'speaking'}
+          onClick={interruptAgent}
+          disabled={!isRecording}
           style={{ padding: '10px 20px' }}
         >
-          Interrupt Agent
+          Interrupt Audio
         </button>
-        
         <button 
           onClick={updateContext}
           disabled={!isRecording}
@@ -178,6 +183,39 @@ function App() {
           Update Context
         </button>
       </div>
+      
+      {isRecording && (
+        <div style={{
+          margin: '20px 0',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          padding: '10px',
+          border: '2px solid #ff3333',
+          borderRadius: '8px',
+          backgroundColor: '#fff8f8'
+        }}>
+          <p style={{ margin: '0 0 10px 0', fontWeight: 'bold' }}>
+            {isPlaying ? '🔈 Agent is speaking' : '🎙️ Microphone active'}
+          </p>
+          <button 
+            onClick={interruptAgent}
+            style={{ 
+              padding: '12px 30px',
+              backgroundColor: '#ff3333',
+              color: 'white',
+              fontWeight: 'bold',
+              fontSize: '16px',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+            }}
+          >
+            🔇 INTERRUPT & CLEAR AUDIO
+          </button>
+        </div>
+      )}
       
       <div style={{ marginBottom: '20px' }}>
         <h2>Status</h2>

@@ -73,6 +73,7 @@ export class AudioManager {
   private analyzer: AnalyserNode | null = null;
   private analyzerData: Uint8Array | null = null;
   private currentSource: AudioBufferSourceNode | null = null;
+  private activeSourceNodes: AudioBufferSourceNode[] = []; // Track all active/scheduled sources
   
   /**
    * Creates a new AudioManager
@@ -288,6 +289,7 @@ export class AudioManager {
     
     try {
       this.log(`Processing audio data (${data.byteLength} bytes)...`);
+      this.log(`[queueAudio] Before: activeSourceNodes.length = ${this.activeSourceNodes.length}, startTimeRef.current = ${this.startTimeRef.current}`);
       
       // Create an audio buffer from the raw data
       const buffer = createAudioBuffer(
@@ -300,15 +302,45 @@ export class AudioManager {
         throw new Error('Failed to create audio buffer: buffer is undefined');
       }
       
-      this.log(`Successfully created audio buffer (${buffer.duration.toFixed(3)}s)`);
+      this.log(`[queueAudio] Created audio buffer (${buffer.duration.toFixed(3)}s)`);
       
       // Play the buffer with precise timing
-      this.currentSource = playAudioBuffer(
+      const source = playAudioBuffer(
         this.audioContext!, 
         buffer, 
         this.startTimeRef, 
         this.analyzer || undefined
       );
+      this.log(`[queueAudio] Scheduled source to start at ${this.startTimeRef.current - buffer.duration} (duration: ${buffer.duration})`);
+      
+      // Add to active sources array for tracking
+      this.activeSourceNodes.push(source);
+      this.log(`[queueAudio] Added source. activeSourceNodes.length = ${this.activeSourceNodes.length}`);
+      
+      // Set up ended handler to remove from active sources when done
+      const originalOnEnded = source.onended;
+      source.onended = (event) => {
+        // Remove from active sources first to ensure cleanup even if there's an error
+        const index = this.activeSourceNodes.indexOf(source);
+        if (index !== -1) {
+          this.activeSourceNodes.splice(index, 1);
+          this.log(`[onended] Source removed. activeSourceNodes.length = ${this.activeSourceNodes.length}`);
+        } else {
+          this.log(`[onended] Source not found in activeSourceNodes (unusual)`);
+        }
+        
+        // Call original handler if there was one
+        try {
+          if (originalOnEnded) {
+            originalOnEnded.call(source, event);
+          }
+        } catch (err) {
+          this.log('Error in original onended handler:', err);
+        }
+      };
+      
+      // Set current source (for backwards compatibility)
+      this.currentSource = source;
       
       // Set playing state
       const wasPlaying = this.isPlaying;
@@ -321,17 +353,18 @@ export class AudioManager {
       
       // Set up ended handler for the last chunk
       this.currentSource.onended = () => {
-        this.log('Current audio source playback ended');
+        this.log('[currentSource.onended] Current audio source playback ended');
         
         // Only emit playing=false if this was the last scheduled chunk
-        const currentTime = this.audioContext!.currentTime;
-        if (this.startTimeRef.current <= currentTime + 0.05) { // Small buffer to account for timing precision
+        if (this.activeSourceNodes.length === 0) {
+          this.log('[currentSource.onended] No more active sources, setting playing state to false');
           this.isPlaying = false;
           this.emit({ type: 'playing', isPlaying: false });
         }
       };
       
-      this.log(`Audio scheduled to play at ${this.startTimeRef.current.toFixed(3)}s, current time: ${this.audioContext!.currentTime.toFixed(3)}s`);
+      this.log(`[queueAudio] After: activeSourceNodes.length = ${this.activeSourceNodes.length}, startTimeRef.current = ${this.startTimeRef.current}`);
+      this.log(`Audio scheduled to play at ${this.startTimeRef.current.toFixed(3)}s, current time: ${this.audioContext!.currentTime.toFixed(3)}s, active sources: ${this.activeSourceNodes.length}`);
       
     } catch (error) {
       this.log('Failed to process audio:', error);
@@ -352,28 +385,78 @@ export class AudioManager {
    * Stops all audio playback and clears scheduled audio
    */
   public clearAudioQueue(): void {
-    this.log('Clearing audio queue');
+    this.log('🚨 CLEARING AUDIO QUEUE - EMERGENCY STOP 🚨');
+    this.log(`[clearAudioQueue] Before: activeSourceNodes.length = ${this.activeSourceNodes.length}, startTimeRef.current = ${this.startTimeRef.current}`);
     
     if (!this.audioContext) {
+      this.log('❌ No audioContext available');
       return;
     }
     
     // Reset the timing reference to stop future scheduling
+    const oldTime = this.startTimeRef.current;
     this.startTimeRef.current = this.audioContext.currentTime;
+    this.log(`⏱️ Reset timing reference from ${oldTime.toFixed(3)}s to ${this.startTimeRef.current.toFixed(3)}s`);
     
-    // If we have a current source, stop it
-    if (this.currentSource) {
-      try {
-        this.currentSource.stop();
-        this.currentSource.disconnect();
-      } catch (error) {
-        this.log('Error stopping current audio source:', error);
-      }
-      this.currentSource = null;
+    // Stop all active source nodes
+    this.log(`🔇 Attempting to stop ${this.activeSourceNodes.length} active audio sources`);
+    
+    if (this.activeSourceNodes.length === 0) {
+      this.log('ℹ️ No active sources found to stop');
     }
     
+    this.activeSourceNodes.forEach((source, index) => {
+      try {
+        this.log(`🔇 Stopping source ${index + 1}/${this.activeSourceNodes.length}`);
+        source.onended = null; // Remove ended callback to prevent state confusion
+        source.stop();
+        source.disconnect();
+        this.log(`✅ Source ${index + 1} stopped and disconnected`);
+      } catch (error) {
+        this.log(`❌ Error stopping audio source ${index + 1}:`, error);
+      }
+    });
+    
+    // Clear the active sources array
+    const count = this.activeSourceNodes.length;
+    this.activeSourceNodes = [];
+    this.log(`🧹 Cleared ${count} active sources from tracking array`);
+    
+    // Also clear current source reference
+    if (this.currentSource) {
+      this.log('🧹 Cleared currentSource reference');
+      this.currentSource = null;
+    } else {
+      this.log('ℹ️ No currentSource reference to clear');
+    }
+    
+    // Force the playing state to false
+    const wasPlaying = this.isPlaying;
     this.isPlaying = false;
-    this.emit({ type: 'playing', isPlaying: false });
+    this.log(`🔇 Set isPlaying state to false (was: ${wasPlaying})`);
+    
+    // Emit playing event only if we were previously playing
+    if (wasPlaying) {
+      this.log('📢 Emitting playing=false event');
+      this.emit({ type: 'playing', isPlaying: false });
+    } else {
+      this.log('ℹ️ Not emitting playing event since we weren\'t playing');
+    }
+    
+    // Try to flush the audio context
+    try {
+      if (this.audioContext.state !== 'closed') {
+        this.log('🔄 Attempting to flush the audio context');
+        const dummy = this.audioContext.createGain();
+        dummy.connect(this.audioContext.destination);
+        dummy.disconnect();
+      }
+    } catch (err) {
+      this.log('⚠️ Error while flushing audio context:', err);
+    }
+    
+    this.log(`[clearAudioQueue] After: activeSourceNodes.length = ${this.activeSourceNodes.length}, startTimeRef.current = ${this.startTimeRef.current}`);
+    this.log('✅ Audio queue cleared, all playback should have stopped');
   }
   
   /**

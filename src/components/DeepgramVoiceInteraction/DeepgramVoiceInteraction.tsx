@@ -525,26 +525,56 @@ function DeepgramVoiceInteraction(
     });
   };
 
+  // Clear all audio playback
+  const clearAudio = (): void => {
+    log('📢 clearAudio helper called');
+    
+    if (!audioManagerRef.current) {
+      log('❌ Cannot clear audio: audioManagerRef.current is null');
+      return;
+    }
+    
+    try {
+      // Try multiple approaches to ensure audio is stopped
+      log('🔴 Calling audioManager.clearAudioQueue()');
+      audioManagerRef.current.clearAudioQueue();
+      
+      // Also try to create and manipulate current time
+      if (audioManagerRef.current['audioContext']) {
+        log('🔄 Manipulating audio context time reference');
+        const ctx = audioManagerRef.current['audioContext'] as AudioContext;
+        
+        // Create a silent buffer and play it immediately
+        try {
+          const silentBuffer = ctx.createBuffer(1, 1024, ctx.sampleRate);
+          const silentSource = ctx.createBufferSource();
+          silentSource.buffer = silentBuffer;
+          silentSource.connect(ctx.destination);
+          silentSource.start();
+        } catch (e) {
+          log('⚠️ Error creating silent buffer:', e);
+        }
+      }
+    } catch (err) {
+      log('❌ Error in clearAudio:', err);
+    }
+    
+    log('📢 clearAudio helper completed');
+  };
+
   // Interrupt the agent
   const interruptAgent = (): void => {
-    log('Interrupting agent');
+    log('🔴 interruptAgent method called');
     
-    // Clear audio queue to stop current playback
-    if (audioManagerRef.current) {
-      audioManagerRef.current.clearAudioQueue();
-    }
+    // First, clear all audio
+    clearAudio();
     
-    // For the new agent API, we need to send an InjectAgentMessage
-    // with empty content to stop current playback
-    if (agentManagerRef.current) {
-      agentManagerRef.current.sendJSON({
-        type: 'InjectAgentMessage',
-        content: ''
-      });
-    }
-    
-    // Reset agent state to idle
+    // No need to send InjectAgentMessage to Deepgram API
+    // Just reset agent state to idle
+    log('🔴 Setting agent state to idle');
     dispatch({ type: 'AGENT_STATE_CHANGE', state: 'idle' });
+    
+    log('🔴 interruptAgent method completed');
   };
 
   // Expose methods via ref - keep only start/stop, comment out agent methods
