@@ -176,4 +176,15 @@ export interface DeepgramVoiceInteractionHandle {
    * Toggle between sleep and wake states
    */
   toggleSleep: () => void;
-} 
+}
+
+/**
+ * Possible states of the agent interaction
+ */
+export type AgentState =
+  | 'idle'       // Agent is ready, not actively listening, speaking, or thinking
+  | 'listening'  // Agent is actively processing user audio input
+  | 'thinking'   // Agent has received user input and is processing/generating a response
+  | 'speaking'   // Agent is generating or sending audio output
+  | 'entering_sleep' // Intermediate state while transitioning to sleep
+  | 'sleeping';  // Agent is paused, ignoring audio input until woken 

@@ -6,7 +6,7 @@
 /**
  * Agent states in the voice interaction process
  */
-export type AgentState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'sleeping';
+export type AgentState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'entering_sleep' | 'sleeping';
 
 /**
  * Agent message types for outgoing messages to the API

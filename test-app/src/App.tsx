@@ -211,7 +211,7 @@ function App() {
       
       <div style={{ border: '1px solid blue', padding: '10px', margin: '15px 0' }}>
         <h4>Component States:</h4>
-        <p>App UI State (isSleeping): <strong>{isSleeping.toString()}</strong></p>
+        <p>App UI State (isSleeping): <strong>{(isSleeping || agentState === 'entering_sleep').toString()}</strong></p>
         <p>Core Component State (agentState via callback): <strong>{agentState}</strong></p>
         <p>Transcription Connection: <strong>{connectionStates.transcription}</strong></p>
         <p>Agent Connection: <strong>{connectionStates.agent}</strong></p>
@@ -253,13 +253,13 @@ function App() {
         </button>
         <button 
           onClick={toggleSleep} 
-          disabled={!isRecording}
+          disabled={!isRecording || agentState === 'entering_sleep'}
           style={{
             padding: '10px 20px',
-            backgroundColor: isSleeping ? '#e0f7fa' : 'transparent'
+            backgroundColor: (isSleeping || agentState === 'entering_sleep') ? '#e0f7fa' : 'transparent'
           }}
         >
-          {isSleeping ? 'Wake Up' : 'Put to Sleep'}
+          {(isSleeping || agentState === 'entering_sleep') ? 'Wake Up' : 'Put to Sleep'}
         </button>
       </div>
       
@@ -275,9 +275,14 @@ function App() {
           backgroundColor: '#fff8f8'
         }}>
           <p style={{ margin: '0 0 10px 0', fontWeight: 'bold' }}>
-            {isPlaying ? '🔈 Agent is speaking' : agentState === 'listening' ? '👂 Agent listening' : agentState === 'thinking' ? '🤔 Agent thinking' : agentState === 'sleeping' ? '😴 Agent sleeping' : '🎙️ Microphone active'}
+            {isPlaying ? '�� Agent is speaking' 
+              : agentState === 'listening' ? '👂 Agent listening' 
+              : agentState === 'thinking' ? '🤔 Agent thinking' 
+              : (agentState === 'sleeping' || agentState === 'entering_sleep') ? '😴 Agent sleeping' 
+              : '🎙️ Microphone active'}
           </p>
-          {isSleeping && <p style={{ margin: '0', fontStyle: 'italic', color: '#555' }}>(Ignoring audio input)</p>}
+          {(agentState === 'sleeping' || agentState === 'entering_sleep') && 
+            <p style={{ margin: '0', fontStyle: 'italic', color: '#555' }}>(Ignoring audio input)</p>}
         </div>
       )}
       

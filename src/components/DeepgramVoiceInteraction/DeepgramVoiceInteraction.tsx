@@ -88,7 +88,22 @@ function DeepgramVoiceInteraction(
   // Update stateRef whenever state changes
   useEffect(() => {
     stateRef.current = state;
-  }, [state]);
+    
+    // If we just entered the 'entering_sleep' state, schedule the final transition
+    if (state.agentState === 'entering_sleep') {
+      const timerId = setTimeout(() => {
+        sleepLog('Transitioning from entering_sleep to sleeping after timeout');
+        // Ensure we are still in entering_sleep before finalizing
+        // (Could have been woken up or stopped during the timeout)
+        if (stateRef.current.agentState === 'entering_sleep') {
+          dispatch({ type: 'AGENT_STATE_CHANGE', state: 'sleeping' });
+        }
+      }, 50); // 50ms delay - adjust if needed
+      
+      // Cleanup timeout if component unmounts or state changes away from entering_sleep
+      return () => clearTimeout(timerId);
+    }
+  }, [state]); // Dependency array includes state
 
   // Handle errors
   const handleError = (error: DeepgramError) => {
@@ -256,13 +271,15 @@ function DeepgramVoiceInteraction(
 
   // Handle transcription messages
   const handleTranscriptionMessage = (data: any) => {
-    // Check for VAD events if enabled
+    // Check if sleeping or entering sleep
+    const isSleepingOrEntering = 
+      stateRef.current.agentState === 'sleeping' || 
+      stateRef.current.agentState === 'entering_sleep';
+      
     if (data.type === 'VADEvent') {
       const isSpeaking = data.is_speech;
-      
-      // Use stateRef to check the LATEST state
-      if (stateRef.current.agentState === 'sleeping') {
-        sleepLog('Ignoring VAD event (isSpeaking:', isSpeaking, ') - agent is sleeping');
+      if (isSleepingOrEntering) {
+        sleepLog('Ignoring VAD event (state:', stateRef.current.agentState, ')');
         return;
       }
       
@@ -276,14 +293,9 @@ function DeepgramVoiceInteraction(
       return;
     }
 
-    // Log all received messages for debugging
-    // log('Received transcription message:', data); // Keep general log if needed
-
-    // Handle transcript
     if (data.type === 'Results' || data.type === 'Transcript') {
-      // Use stateRef to check the LATEST state
-      if (stateRef.current.agentState === 'sleeping') {
-        sleepLog('Ignoring transcript - agent is sleeping');
+      if (isSleepingOrEntering) {
+        sleepLog('Ignoring transcript (state:', stateRef.current.agentState, ')');
         return;
       }
       
@@ -341,27 +353,14 @@ function DeepgramVoiceInteraction(
 
   // Handle agent messages
   const handleAgentMessage = (data: any) => {
-    // log('Received agent message:', data); // Keep general log if needed
-    
-    // Handle Settings Applied confirmation
-    if (data.type === 'SettingsApplied') {
-      log('Agent settings applied successfully');
-      return;
-    }
-    
-    // Handle Welcome message 
-    if (data.type === 'Welcome') {
-      log('Connected to agent service:', data.request_id);
-      return;
-    }
-    
-    // Handle agent state messages
+    const isSleepingOrEntering = 
+      stateRef.current.agentState === 'sleeping' || 
+      stateRef.current.agentState === 'entering_sleep';
+
     if (data.type === 'UserStartedSpeaking') {
       sleepLog('UserStartedSpeaking message received');
-      
-      // Use stateRef to check the LATEST state
-      if (stateRef.current.agentState === 'sleeping') {
-        sleepLog('Agent is sleeping - ignoring UserStartedSpeaking event');
+      if (isSleepingOrEntering) {
+        sleepLog('Ignoring UserStartedSpeaking event (state:', stateRef.current.agentState, ')');
         return;
       }
       
@@ -459,14 +458,18 @@ function DeepgramVoiceInteraction(
       transcriptionManagerRef.current.sendBinary(data);
     }
     
-    // Use stateRef to check the LATEST state before sending to agent
+    // Check if sleeping or entering sleep before sending to agent
+    const isSleepingOrEntering = 
+      stateRef.current.agentState === 'sleeping' || 
+      stateRef.current.agentState === 'entering_sleep';
+      
     if (
       agentManagerRef.current?.getState() === 'connected' && 
-      stateRef.current.agentState !== 'sleeping'
+      !isSleepingOrEntering // Block if sleeping or entering sleep
     ) {
       agentManagerRef.current.sendBinary(data);
-    } else if (stateRef.current.agentState === 'sleeping') {
-      sleepLog('Skipping sendAudioData to agent - agent is sleeping');
+    } else if (isSleepingOrEntering) {
+      sleepLog('Skipping sendAudioData to agent (state:', stateRef.current.agentState, ')');
     }
   };
 
@@ -638,18 +641,23 @@ function DeepgramVoiceInteraction(
     log('🔴 interruptAgent method completed');
   };
 
-  // Put agent to sleep
+  // Put agent to sleep - Start the transition
   const sleep = (): void => {
-    sleepLog('sleep() method called');
-    isWaitingForUserVoiceAfterSleep.current = true;
+    sleepLog('sleep() method called - initiating transition');
+    isWaitingForUserVoiceAfterSleep.current = true; // Set this early
     clearAudio();
-    sleepLog('Dispatching AGENT_STATE_CHANGE to sleeping (from sleep())');
-    dispatch({ type: 'AGENT_STATE_CHANGE', state: 'sleeping' });
+    sleepLog('Dispatching AGENT_STATE_CHANGE to entering_sleep (from sleep())');
+    dispatch({ type: 'AGENT_STATE_CHANGE', state: 'entering_sleep' });
   };
   
-  // Wake agent from sleep
+  // Wake agent from sleep - Should only happen FROM 'sleeping' state
   const wake = (): void => {
-    sleepLog('wake() method called');
+    // Add guard just in case wake is called unexpectedly
+    if (stateRef.current.agentState !== 'sleeping') {
+        sleepLog(`wake() called but state is ${stateRef.current.agentState}, not 'sleeping'. Aborting wake.`);
+        return;
+    }
+    sleepLog('wake() method called from sleeping state');
     isWaitingForUserVoiceAfterSleep.current = false;
     sleepLog('Dispatching AGENT_STATE_CHANGE to listening (from wake())');
     dispatch({ type: 'AGENT_STATE_CHANGE', state: 'listening' });
@@ -658,12 +666,17 @@ function DeepgramVoiceInteraction(
   // Toggle between sleep and wake states
   const toggleSleep = (): void => {
     sleepLog('toggleSleep() method called. Current state via ref:', stateRef.current.agentState);
+    // Only allow wake from fully 'sleeping' state
     if (stateRef.current.agentState === 'sleeping') {
       wake();
-    } else {
+    // Allow sleep from any non-sleeping/non-entering_sleep state 
+    } else if (stateRef.current.agentState !== 'entering_sleep') { 
       sleep();
+    } else {
+      // If already entering_sleep, do nothing (or log)
+      sleepLog('toggleSleep() called while already entering_sleep. No action.');
     }
-    sleepLog('Sleep toggle action dispatched');
+    sleepLog('Sleep toggle action dispatched or ignored');
   };
 
   // Expose methods via ref - keep only start/stop, comment out agent methods
