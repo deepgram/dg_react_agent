@@ -29,7 +29,7 @@ const DEFAULT_ENDPOINTS = {
 };
 
 // Create a stable reference for the default empty object
-const defaultEndpointConfig = {};
+// const defaultEndpointConfig = {}; // Keep this commented out or remove
 
 /**
  * DeepgramVoiceInteraction component
@@ -531,13 +531,10 @@ function DeepgramVoiceInteraction(
   // Start the connection
   const start = async (): Promise<void> => {
     try {
-      log('Start method called'); // Log entry
-      
-      // Initialize audio manager if not already - Removed check, should be initialized by useEffect
-      // if (audioManagerRef.current) { ... } - Check assumed true here
+      log('Start method called');
       
       log('Initializing AudioManager (start method - re-check)...');
-      await audioManagerRef.current!.initialize(); // Ensure initialized if needed
+      await audioManagerRef.current!.initialize(); 
       log('AudioManager initialized (start method - re-check)');
 
       // Connect WebSockets
@@ -565,25 +562,21 @@ function DeepgramVoiceInteraction(
         await audioManagerRef.current.startRecording();
         log('Recording started');
       } else {
-        // This case should be caught earlier, but added for completeness
         log('AudioManager ref is null before starting recording');
         throw new Error('Audio manager not available for recording');
       }
       
-      // log('Dispatching READY_STATE_CHANGE to true'); // Removed - now done in useEffect
-      // dispatch({ type: 'READY_STATE_CHANGE', isReady: true }); // Removed
-      log('Start method completed successfully'); // Log success
+      log('Start method completed successfully');
     } catch (error) {
-      log('Error within start method:', error); // Log internal error
+      log('Error within start method:', error);
       handleError({
-        service: 'transcription', // Or determine service based on error source
+        service: 'transcription',
         code: 'start_error',
         message: 'Failed to start voice interaction',
         details: error,
       });
-      // Signal not ready on start failure
       dispatch({ type: 'READY_STATE_CHANGE', isReady: false });
-      throw error; // Re-throw to be caught by the caller if needed
+      throw error;
     }
   };
 
@@ -626,7 +619,6 @@ function DeepgramVoiceInteraction(
         message: 'Error while stopping transcription',
         details: error,
       });
-      // Signal not ready on stop failure
       dispatch({ type: 'READY_STATE_CHANGE', isReady: false });
       return Promise.reject(error);
     }
@@ -658,16 +650,12 @@ function DeepgramVoiceInteraction(
     }
     
     try {
-      // Try multiple approaches to ensure audio is stopped
       log('🔴 Calling audioManager.clearAudioQueue()');
       audioManagerRef.current.clearAudioQueue();
       
-      // Also try to create and manipulate current time
       if (audioManagerRef.current['audioContext']) {
         log('🔄 Manipulating audio context time reference');
         const ctx = audioManagerRef.current['audioContext'] as AudioContext;
-        
-        // Create a silent buffer and play it immediately
         try {
           const silentBuffer = ctx.createBuffer(1, 1024, ctx.sampleRate);
           const silentSource = ctx.createBufferSource();
@@ -688,7 +676,6 @@ function DeepgramVoiceInteraction(
   // Interrupt the agent
   const interruptAgent = (): void => {
     log('🔴 interruptAgent method called');
-    // First, clear all audio
     clearAudio();
     log('🔴 Setting agent state to idle');
     sleepLog('Dispatching AGENT_STATE_CHANGE to idle (from interruptAgent)');
@@ -699,17 +686,16 @@ function DeepgramVoiceInteraction(
   // Put agent to sleep - Start the transition
   const sleep = (): void => {
     sleepLog('sleep() method called - initiating transition');
-    isWaitingForUserVoiceAfterSleep.current = true; // Set this early
+    isWaitingForUserVoiceAfterSleep.current = true;
     clearAudio();
     sleepLog('Dispatching AGENT_STATE_CHANGE to entering_sleep (from sleep())');
     dispatch({ type: 'AGENT_STATE_CHANGE', state: 'entering_sleep' });
   };
   
-  // Wake agent from sleep - Should only happen FROM 'sleeping' state
+  // Wake agent from sleep
   const wake = (): void => {
-    // Add guard just in case wake is called unexpectedly
     if (stateRef.current.agentState !== 'sleeping') {
-        sleepLog(`wake() called but state is ${stateRef.current.agentState}, not 'sleeping'. Aborting wake.`);
+        sleepLog(`wake() called but state is ${stateRef.current.agentState}, not \'sleeping\'. Aborting wake.`);
         return;
     }
     sleepLog('wake() method called from sleeping state');
@@ -721,14 +707,11 @@ function DeepgramVoiceInteraction(
   // Toggle between sleep and wake states
   const toggleSleep = (): void => {
     sleepLog('toggleSleep() method called. Current state via ref:', stateRef.current.agentState);
-    // Only allow wake from fully 'sleeping' state
     if (stateRef.current.agentState === 'sleeping') {
       wake();
-    // Allow sleep from any non-sleeping/non-entering_sleep state 
     } else if (stateRef.current.agentState !== 'entering_sleep') { 
       sleep();
     } else {
-      // If already entering_sleep, do nothing (or log)
       sleepLog('toggleSleep() called while already entering_sleep. No action.');
     }
     sleepLog('Sleep toggle action dispatched or ignored');
