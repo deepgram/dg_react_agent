@@ -161,10 +161,27 @@ function App() {
   };
   
   const updateContext = () => {
-    deepgramRef.current?.updateAgentInstructions({
-      context: `The current time is ${new Date().toLocaleTimeString()}.`
-    });
-    addLog('Updated agent context');
+    // Define the possible instruction prompts
+    const instructions = [
+      "Talk like a pirate.",
+      "Respond only in questions.",
+      "Talk in Old English."
+    ];
+    
+    // Randomly select an instruction
+    const randomIndex = Math.floor(Math.random() * instructions.length);
+    const selectedInstruction = instructions[randomIndex];
+    
+    if (deepgramRef.current) {
+      deepgramRef.current.updateAgentInstructions({
+        // Using 'instructions' key based on UpdateInstructionsPayload
+        instructions: selectedInstruction 
+      });
+      addLog(`Updated agent context: ${selectedInstruction}`);
+      sleepLogApp(`Sent instruction: "${selectedInstruction}"`); // Add sleep cycle log too
+    } else {
+      addLog('Error: Could not update context, deepgramRef is null');
+    }
   };
   
   const toggleSleep = () => {

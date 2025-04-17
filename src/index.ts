@@ -5,10 +5,8 @@
  */
 
 // Export the main component
-export { DeepgramVoiceInteraction } from './components/DeepgramVoiceInteraction';
+export { default as DeepgramVoiceInteraction } from './components/DeepgramVoiceInteraction';
 
 // Export types
 export * from './types';
 
-// Export contexts and hooks for advanced usage
-export * from './contexts'; 
