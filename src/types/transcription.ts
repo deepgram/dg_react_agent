@@ -51,6 +51,20 @@ export interface TranscriptionOptions {
   vad_events?: boolean;
   
   /**
+   * Keywords to detect in the audio.
+   * @see https://developers.deepgram.com/docs/keywords
+   */
+  keywords?: string[];
+  
+  /**
+   * Keyterms to boost recognition for (Nova-3 English only).
+   * Each string in the array will be sent as a separate 'keyterm' parameter.
+   * Phrases with spaces are handled correctly.
+   * @see https://developers.deepgram.com/docs/keyterm
+   */
+  keyterm?: string[];
+  
+  /**
    * Any other parameters supported by Deepgram API
    */
   [key: string]: any;

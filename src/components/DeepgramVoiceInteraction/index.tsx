@@ -28,6 +28,9 @@ const DEFAULT_ENDPOINTS = {
   agentUrl: 'wss://agent.deepgram.com/v1/agent/converse',
 };
 
+// Create a stable reference for the default empty object
+const defaultEndpointConfig = {};
+
 /**
  * DeepgramVoiceInteraction component
  * 
@@ -41,7 +44,7 @@ function DeepgramVoiceInteraction(
     apiKey,
     transcriptionOptions = {},
     agentOptions = {},
-    endpointConfig = {},
+    endpointConfig,
     onReady,
     onConnectionStateChange,
     onTranscriptUpdate,
@@ -124,14 +127,19 @@ function DeepgramVoiceInteraction(
       return;
     }
 
-    // Prepare endpoints
+    // Prepare endpoints, using defaults ONLY if endpointConfig prop is not provided
+    const currentEndpointConfig = endpointConfig || {}; // Use provided or empty object
     const endpoints = {
-      transcriptionUrl: endpointConfig.transcriptionUrl || DEFAULT_ENDPOINTS.transcriptionUrl,
-      agentUrl: endpointConfig.agentUrl || DEFAULT_ENDPOINTS.agentUrl,
+      transcriptionUrl: currentEndpointConfig.transcriptionUrl || DEFAULT_ENDPOINTS.transcriptionUrl,
+      agentUrl: currentEndpointConfig.agentUrl || DEFAULT_ENDPOINTS.agentUrl,
     };
 
-    // Ensure audio format parameters are set for transcription
-    const transcriptionParams = {
+    // --- Transcription WebSocket Setup ---
+    let transcriptionUrl = endpoints.transcriptionUrl;
+    let transcriptionQueryParams: Record<string, string | boolean | number> = {};
+
+    // Base transcription parameters (always include)
+    const baseTranscriptionParams = {
       ...transcriptionOptions,
       // Set defaults for audio format if not provided
       sample_rate: transcriptionOptions.sample_rate || 16000,
@@ -139,25 +147,72 @@ function DeepgramVoiceInteraction(
       channels: transcriptionOptions.channels || 1,
     };
 
-    // Create WebSocket managers
+    // Check for Nova-3 Keyterm Prompting conditions
+    const useKeytermPrompting = 
+      baseTranscriptionParams.model === 'nova-3' &&
+      Array.isArray(baseTranscriptionParams.keyterm) &&
+      baseTranscriptionParams.keyterm.length > 0;
+
+    if (useKeytermPrompting) {
+      log('Nova-3 and keyterms detected. Building transcription URL with keyterm parameters.');
+      // Build URL manually, appending keyterms
+      const url = new URL(transcriptionUrl);
+      const params = new URLSearchParams();
+      
+      // Append all other options EXCEPT keyterm array itself
+      for (const [key, value] of Object.entries(baseTranscriptionParams)) {
+        if (key !== 'keyterm' && value !== undefined) {
+          params.append(key, String(value));
+        }
+      }
+      
+      // Append each keyterm as a separate parameter
+      baseTranscriptionParams.keyterm?.forEach(term => {
+        if (term) { // Ensure term is not empty
+          params.append('keyterm', term);
+        }
+      });
+
+      url.search = params.toString();
+      transcriptionUrl = url.toString();
+      log('Constructed transcription URL with keyterms:', transcriptionUrl);
+      // queryParams remain empty as they are in the URL now
+    } else {
+      // Standard setup: Build queryParams object, excluding array types like keyterm and keywords
+      log('Not using keyterm prompting. Building queryParams object excluding array types.');
+      const { keyterm, keywords, ...otherParams } = baseTranscriptionParams;
+      
+      // Ensure only primitive types are included in queryParams
+      const filteredParams: Record<string, string | number | boolean> = {};
+      for (const [key, value] of Object.entries(otherParams)) {
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          filteredParams[key] = value;
+        } else {
+          log(`Skipping non-primitive param ${key} for queryParams object.`);
+        }
+      }
+      transcriptionQueryParams = filteredParams;
+    }
+    
+    // Create Transcription WebSocket manager
     transcriptionManagerRef.current = new WebSocketManager({
-      url: endpoints.transcriptionUrl,
+      url: transcriptionUrl, // Use the potentially modified URL
       apiKey,
       service: 'transcription',
-      queryParams: transcriptionParams as Record<string, string | boolean | number>,
+      // Conditionally pass queryParams ONLY if not using keyterm prompting in URL
+      queryParams: useKeytermPrompting ? undefined : transcriptionQueryParams, 
       debug,
     });
 
-    // Create agent WebSocket manager
+    // --- Agent WebSocket Setup (unchanged) ---
     agentManagerRef.current = new WebSocketManager({
       url: endpoints.agentUrl,
       apiKey,
       service: 'agent',
-      // No query params for agent - we'll send settings after connection
       debug,
     });
 
-    // Create audio manager
+    // Create audio manager (unchanged)
     audioManagerRef.current = new AudioManager({
       debug,
     });
@@ -252,7 +307,7 @@ function DeepgramVoiceInteraction(
       dispatch({ type: 'RECORDING_STATE_CHANGE', isRecording: false });
       dispatch({ type: 'PLAYBACK_STATE_CHANGE', isPlaying: false });
     };
-  }, [apiKey]);
+  }, [apiKey, transcriptionOptions, agentOptions, endpointConfig, debug]); // Add options to dependency array
 
   // Notify ready state changes
   useEffect(() => {

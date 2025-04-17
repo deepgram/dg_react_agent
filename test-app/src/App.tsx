@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useMemo } from 'react';
 import { 
   DeepgramVoiceInteraction, 
   DeepgramVoiceInteractionHandle,
@@ -26,6 +26,36 @@ function App() {
     agent: 'closed'
   });
   const [logs, setLogs] = useState<string[]>([]);
+  
+  // Memoize options objects to prevent unnecessary re-renders/effect loops
+  const memoizedTranscriptionOptions = useMemo(() => ({
+    // Switch model to nova-3 to enable keyterm prompting
+    model: 'nova-3', 
+    language: 'en-US',
+    smart_format: true,
+    interim_results: true,
+    diarize: true, 
+    channels: 1,
+    // Add keyterms that might be tricky for standard models
+    keyterm: [
+      "Casella", // Proper noun
+      "Symbiosis", // Less common word
+      "Kerfuffle", // Unusual word
+      "Supercalifragilisticexpialidocious" // Very long/unusual
+    ]
+  }), []); // Empty dependency array means this object is created only once
+
+  const memoizedAgentOptions = useMemo(() => ({
+    language: 'en',
+    // Agent can still use nova-2 for listening if desired, 
+    // keyterms only affect the transcription service input.
+    listenModel: 'nova-2', 
+    thinkProviderType: 'open_ai',
+    thinkModel: 'gpt-4o-mini',
+    voice: 'aura-2-apollo-en',
+    instructions: 'You are a helpful voice assistant. Keep your responses concise and informative.',
+    greeting: 'Hello! How can I assist you today?'
+  }), []); // Empty dependency array means this object is created only once
   
   // Helper to add logs - memoized
   const addLog = useCallback((message: string) => {
@@ -199,23 +229,8 @@ function App() {
       <DeepgramVoiceInteraction
         ref={deepgramRef}
         apiKey={import.meta.env.VITE_DEEPGRAM_API_KEY || ''}
-        transcriptionOptions={{
-          model: 'nova-2',
-          language: 'en-US',
-          smart_format: true,
-          interim_results: true,
-          diarize: true, // Enable speaker diarization
-          channels: 1
-        }}
-        agentOptions={{
-          language: 'en',
-          listenModel: 'nova-2',
-          thinkProviderType: 'open_ai',
-          thinkModel: 'gpt-4o-mini',
-          voice: 'aura-2-apollo-en',
-          instructions: 'You are a helpful voice assistant. Keep your responses concise and informative.',
-          greeting: 'Hello! How can I assist you today?'
-        }}
+        transcriptionOptions={memoizedTranscriptionOptions}
+        agentOptions={memoizedAgentOptions}
         onReady={handleReady}
         onTranscriptUpdate={handleTranscriptUpdate}
         onAgentUtterance={handleAgentUtterance}
@@ -292,7 +307,7 @@ function App() {
           backgroundColor: '#fff8f8'
         }}>
           <p style={{ margin: '0 0 10px 0', fontWeight: 'bold' }}>
-            {isPlaying ? '�� Agent is speaking' 
+            {isPlaying ? '🤖 Agent is speaking' 
               : agentState === 'listening' ? '👂 Agent listening' 
               : agentState === 'thinking' ? '🤔 Agent thinking' 
               : (agentState === 'sleeping' || agentState === 'entering_sleep') ? '😴 Agent sleeping' 
