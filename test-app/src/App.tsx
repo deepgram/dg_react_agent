@@ -32,6 +32,11 @@ function App() {
     setLogs(prev => [...prev, `${new Date().toISOString().substring(11, 19)} - ${message}`]);
   }, []); // No dependencies, created once
   
+  // Targeted sleep/wake logging for the App component
+  const sleepLogApp = useCallback((message: string) => {
+    addLog(`[SLEEP_CYCLE][APP] ${message}`);
+  }, [addLog]);
+  
   // Event handlers - memoized with useCallback
   const handleReady = useCallback((ready: boolean) => {
     setIsReady(ready);
@@ -85,10 +90,21 @@ function App() {
   }, [addLog]); // Depends on addLog
   
   const handleAgentStateChange = useCallback((state: AgentState) => {
+    const prevState = agentState; // Capture previous state for comparison
     setAgentState(state);
     setIsSleeping(state === 'sleeping');
-    addLog(`Agent state: ${state}`);
-  }, [addLog]); // Depends on addLog
+    addLog(`Agent state changed: ${state}`); // General log
+    
+    // Specific sleep cycle logging
+    if (state === 'sleeping' && prevState !== 'sleeping') {
+      sleepLogApp(`State changed TO sleeping.`);
+    } else if (state !== 'sleeping' && prevState === 'sleeping') {
+      sleepLogApp(`State changed FROM sleeping to ${state}.`);
+    } else if (state === 'sleeping' && prevState === 'sleeping') {
+      // This case might indicate an unnecessary update, but log it for now
+      sleepLogApp(`State remained sleeping (received update).`);
+    }
+  }, [addLog, sleepLogApp, agentState]); // Depends on addLog, sleepLogApp, and agentState
   
   // Add a handler for audio playing status
   const handlePlaybackStateChange = useCallback((isPlaying: boolean) => {
@@ -153,8 +169,9 @@ function App() {
   
   const toggleSleep = () => {
     if (deepgramRef.current) {
+      sleepLogApp(`Toggle button clicked. Current app state isSleeping=${isSleeping}. Calling core toggleSleep().`);
       deepgramRef.current.toggleSleep();
-      addLog(`Toggled sleep state (current: ${isSleeping ? 'sleeping' : 'active'})`);
+      // Removed the potentially inaccurate log here, state change is handled by onAgentStateChange
     }
   };
   
@@ -192,11 +209,21 @@ function App() {
         debug={true}
       />
       
+      <div style={{ border: '1px solid blue', padding: '10px', margin: '15px 0' }}>
+        <h4>Component States:</h4>
+        <p>App UI State (isSleeping): <strong>{isSleeping.toString()}</strong></p>
+        <p>Core Component State (agentState via callback): <strong>{agentState}</strong></p>
+        <p>Transcription Connection: <strong>{connectionStates.transcription}</strong></p>
+        <p>Agent Connection: <strong>{connectionStates.agent}</strong></p>
+        <p>Audio Recording: <strong>{isRecording.toString()}</strong></p>
+        <p>Audio Playing: <strong>{isPlaying.toString()}</strong></p>
+      </div>
+      
       <div style={{ margin: '20px 0', display: 'flex', gap: '10px' }}>
         {!isRecording ? (
           <button 
             onClick={startInteraction} 
-            disabled={!isReady}
+            disabled={!isReady || isRecording}
             style={{ padding: '10px 20px' }}
           >
             Start
@@ -204,6 +231,7 @@ function App() {
         ) : (
           <button 
             onClick={stopInteraction}
+            disabled={!isRecording}
             style={{ padding: '10px 20px' }}
           >
             Stop
@@ -247,83 +275,29 @@ function App() {
           backgroundColor: '#fff8f8'
         }}>
           <p style={{ margin: '0 0 10px 0', fontWeight: 'bold' }}>
-            {isPlaying ? '🔈 Agent is speaking' : '🎙️ Microphone active'}
+            {isPlaying ? '🔈 Agent is speaking' : agentState === 'listening' ? '👂 Agent listening' : agentState === 'thinking' ? '🤔 Agent thinking' : agentState === 'sleeping' ? '😴 Agent sleeping' : '🎙️ Microphone active'}
           </p>
-          <button 
-            onClick={interruptAgent}
-            style={{ 
-              padding: '12px 30px',
-              backgroundColor: '#ff3333',
-              color: 'white',
-              fontWeight: 'bold',
-              fontSize: '16px',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
-            }}
-          >
-            🔇 INTERRUPT & CLEAR AUDIO
-          </button>
+          {isSleeping && <p style={{ margin: '0', fontStyle: 'italic', color: '#555' }}>(Ignoring audio input)</p>}
         </div>
       )}
       
-      <div style={{ marginBottom: '20px' }}>
-        <h2>Status</h2>
-        <p><strong>Component ready:</strong> {isReady ? 'Yes' : 'No'}</p>
-        <p><strong>Transcription connection:</strong> {connectionStates.transcription}</p>
-        <p><strong>Agent connection:</strong> {connectionStates.agent}</p>
-        <p><strong>Agent state:</strong> {agentState}</p>
-        <p>
-          <strong>Audio: </strong>
-          {isPlaying && (
-            <span style={{ 
-              display: 'inline-block',
-              width: '12px',
-              height: '12px',
-              borderRadius: '50%',
-              backgroundColor: '#4CAF50',
-              marginRight: '5px',
-              animation: 'pulse 1s infinite'
-            }}></span>
-          )}
-          {isPlaying ? 'Playing' : 'Silent'}
-        </p>
-      </div>
-      
-      <div style={{ marginBottom: '20px' }}>
-        <h2>Conversation</h2>
-        <div style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px', minHeight: '50px' }}>
-          <strong>Your speech:</strong> {
-            lastTranscript.startsWith('Speaker') ? (
-              <>
-                <span style={{ 
-                  display: 'inline-block',
-                  backgroundColor: lastTranscript.includes('Speaker 0') ? '#e3f2fd' : 
-                                  lastTranscript.includes('Speaker 1') ? '#ffebee' : '#f1f8e9',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  marginRight: '6px',
-                  fontSize: '12px',
-                  fontWeight: 'bold'
-                }}>
-                  {lastTranscript.split(':')[0]}
-                </span>
-                {lastTranscript.split(':').slice(1).join(':')}
-              </>
-            ) : lastTranscript || '(No transcription yet)'
-          }
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '20px', marginTop: '20px' }}>
+        <div style={{ flex: 1, border: '1px solid #ccc', padding: '10px' }}>
+          <h3>Live Transcript</h3>
+          <pre>{lastTranscript || '(Waiting for transcript...)'}</pre>
         </div>
-        <div style={{ border: '1px solid #ccc', padding: '10px', minHeight: '50px' }}>
-          <strong>Agent response:</strong> {agentResponse || '(No response yet)'}
+        <div style={{ flex: 1, border: '1px solid #ccc', padding: '10px' }}>
+          <h3>Agent Response</h3>
+          <pre>{agentResponse || '(Waiting for agent response...)'}</pre>
         </div>
       </div>
       
-      <div style={{ maxHeight: '200px', overflowY: 'scroll', border: '1px solid #eee', padding: '10px' }}>
-        <h2>Logs</h2>
-        {logs.map((log, index) => (
-          <p key={index} style={{ margin: '2px 0', fontSize: '12px' }}>{log}</p>
-        ))}
+      <div style={{ marginTop: '20px', border: '1px solid #eee', padding: '10px' }}>
+        <h3>Event Log</h3>
+        <button onClick={() => setLogs([])} style={{ marginBottom: '10px' }}>Clear Logs</button>
+        <pre style={{ maxHeight: '300px', overflowY: 'scroll', background: '#f9f9f9', padding: '5px' }}>
+          {logs.join('\n')}
+        </pre>
       </div>
     </div>
   );

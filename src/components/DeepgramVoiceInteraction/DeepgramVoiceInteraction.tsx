@@ -17,7 +17,6 @@ import {
   StateEvent,
   initialState,
   stateReducer,
-  derivedStates
 } from '../../utils/state/VoiceInteractionState';
 
 // Default URL to load the AudioWorklet processor
@@ -57,6 +56,9 @@ function DeepgramVoiceInteraction(
 
   // Internal state
   const [state, dispatch] = useReducer(stateReducer, initialState);
+  
+  // Ref to hold the latest state value, avoiding stale closures in callbacks
+  const stateRef = useRef<VoiceInteractionState>(state);
 
   // Managers
   const transcriptionManagerRef = useRef<WebSocketManager | null>(null);
@@ -66,12 +68,27 @@ function DeepgramVoiceInteraction(
   // Tracking user speaking state
   const userSpeakingRef = useRef(false);
   
+  // Track if we're waiting for user voice after waking from sleep
+  const isWaitingForUserVoiceAfterSleep = useRef(false);
+  
   // Debug logging
   const log = (...args: any[]) => {
     if (debug) {
       console.log('[DeepgramVoiceInteraction]', ...args);
     }
   };
+  
+  // Targeted sleep/wake logging
+  const sleepLog = (...args: any[]) => {
+    if (debug) {
+      console.log('[SLEEP_CYCLE][CORE]', ...args);
+    }
+  };
+
+  // Update stateRef whenever state changes
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Handle errors
   const handleError = (error: DeepgramError) => {
@@ -242,6 +259,13 @@ function DeepgramVoiceInteraction(
     // Check for VAD events if enabled
     if (data.type === 'VADEvent') {
       const isSpeaking = data.is_speech;
+      
+      // Use stateRef to check the LATEST state
+      if (stateRef.current.agentState === 'sleeping') {
+        sleepLog('Ignoring VAD event (isSpeaking:', isSpeaking, ') - agent is sleeping');
+        return;
+      }
+      
       if (isSpeaking && !userSpeakingRef.current) {
         userSpeakingRef.current = true;
         onUserStartedSpeaking?.();
@@ -253,10 +277,16 @@ function DeepgramVoiceInteraction(
     }
 
     // Log all received messages for debugging
-    log('Received transcription message:', data);
+    // log('Received transcription message:', data); // Keep general log if needed
 
     // Handle transcript
     if (data.type === 'Results' || data.type === 'Transcript') {
+      // Use stateRef to check the LATEST state
+      if (stateRef.current.agentState === 'sleeping') {
+        sleepLog('Ignoring transcript - agent is sleeping');
+        return;
+      }
+      
       const transcript = data as unknown as TranscriptResponse;
       onTranscriptUpdate?.(transcript);
       return;
@@ -311,7 +341,7 @@ function DeepgramVoiceInteraction(
 
   // Handle agent messages
   const handleAgentMessage = (data: any) => {
-    log('Received agent message:', data);
+    // log('Received agent message:', data); // Keep general log if needed
     
     // Handle Settings Applied confirmation
     if (data.type === 'SettingsApplied') {
@@ -327,24 +357,43 @@ function DeepgramVoiceInteraction(
     
     // Handle agent state messages
     if (data.type === 'UserStartedSpeaking') {
-      log('User started speaking - Clearing audio queue (barge-in)');
-      clearAudio(); // Barge-in: Stop agent playback
+      sleepLog('UserStartedSpeaking message received');
+      
+      // Use stateRef to check the LATEST state
+      if (stateRef.current.agentState === 'sleeping') {
+        sleepLog('Agent is sleeping - ignoring UserStartedSpeaking event');
+        return;
+      }
+      
+      // Normal speech handling when not sleeping
+      log('Clearing audio queue (barge-in)');
+      clearAudio();
       onUserStartedSpeaking?.();
+      
+      if (isWaitingForUserVoiceAfterSleep.current) {
+        log('User started speaking after wake - resetting waiting flag');
+        isWaitingForUserVoiceAfterSleep.current = false;
+      }
+      
+      sleepLog('Dispatching AGENT_STATE_CHANGE to listening (from UserStartedSpeaking)');
       dispatch({ type: 'AGENT_STATE_CHANGE', state: 'listening' });
       return;
     }
     
     if (data.type === 'AgentThinking') {
+      sleepLog('Dispatching AGENT_STATE_CHANGE to thinking');
       dispatch({ type: 'AGENT_STATE_CHANGE', state: 'thinking' });
       return;
     }
     
     if (data.type === 'AgentStartedSpeaking') {
+      sleepLog('Dispatching AGENT_STATE_CHANGE to speaking');
       dispatch({ type: 'AGENT_STATE_CHANGE', state: 'speaking' });
       return;
     }
     
     if (data.type === 'AgentAudioDone') {
+      sleepLog('Dispatching AGENT_STATE_CHANGE to idle (from AgentAudioDone)');
       dispatch({ type: 'AGENT_STATE_CHANGE', state: 'idle' });
       return;
     }
@@ -383,6 +432,12 @@ function DeepgramVoiceInteraction(
   const handleAgentAudio = (data: ArrayBuffer) => {
     log(`handleAgentAudio called! Received buffer of ${data.byteLength} bytes`);
     
+    // Skip audio playback if we're waiting for user voice after sleep
+    if (isWaitingForUserVoiceAfterSleep.current) {
+      log('Skipping audio playback because waiting for user voice after sleep');
+      return;
+    }
+    
     if (audioManagerRef.current) {
       log('Passing buffer to AudioManager.queueAudio()');
       audioManagerRef.current.queueAudio(data)
@@ -399,12 +454,19 @@ function DeepgramVoiceInteraction(
 
   // Send audio data to WebSockets
   const sendAudioData = (data: ArrayBuffer) => {
-    if (transcriptionManagerRef.current) {
+    // Always send to transcription service (if connected)
+    if (transcriptionManagerRef.current?.getState() === 'connected') {
       transcriptionManagerRef.current.sendBinary(data);
     }
     
-    if (agentManagerRef.current && agentManagerRef.current.getState() === 'connected') {
+    // Use stateRef to check the LATEST state before sending to agent
+    if (
+      agentManagerRef.current?.getState() === 'connected' && 
+      stateRef.current.agentState !== 'sleeping'
+    ) {
       agentManagerRef.current.sendBinary(data);
+    } else if (stateRef.current.agentState === 'sleeping') {
+      sleepLog('Skipping sendAudioData to agent - agent is sleeping');
     }
   };
 
@@ -568,16 +630,40 @@ function DeepgramVoiceInteraction(
   // Interrupt the agent
   const interruptAgent = (): void => {
     log('🔴 interruptAgent method called');
-    
     // First, clear all audio
     clearAudio();
-    
-    // No need to send InjectAgentMessage to Deepgram API
-    // Just reset agent state to idle
     log('🔴 Setting agent state to idle');
+    sleepLog('Dispatching AGENT_STATE_CHANGE to idle (from interruptAgent)');
     dispatch({ type: 'AGENT_STATE_CHANGE', state: 'idle' });
-    
     log('🔴 interruptAgent method completed');
+  };
+
+  // Put agent to sleep
+  const sleep = (): void => {
+    sleepLog('sleep() method called');
+    isWaitingForUserVoiceAfterSleep.current = true;
+    clearAudio();
+    sleepLog('Dispatching AGENT_STATE_CHANGE to sleeping (from sleep())');
+    dispatch({ type: 'AGENT_STATE_CHANGE', state: 'sleeping' });
+  };
+  
+  // Wake agent from sleep
+  const wake = (): void => {
+    sleepLog('wake() method called');
+    isWaitingForUserVoiceAfterSleep.current = false;
+    sleepLog('Dispatching AGENT_STATE_CHANGE to listening (from wake())');
+    dispatch({ type: 'AGENT_STATE_CHANGE', state: 'listening' });
+  };
+  
+  // Toggle between sleep and wake states
+  const toggleSleep = (): void => {
+    sleepLog('toggleSleep() method called. Current state via ref:', stateRef.current.agentState);
+    if (stateRef.current.agentState === 'sleeping') {
+      wake();
+    } else {
+      sleep();
+    }
+    sleepLog('Sleep toggle action dispatched');
   };
 
   // Expose methods via ref - keep only start/stop, comment out agent methods
@@ -586,6 +672,9 @@ function DeepgramVoiceInteraction(
     stop,
     updateAgentInstructions,
     interruptAgent,
+    sleep,
+    wake,
+    toggleSleep,
   }));
 
   // Render nothing (headless component)
