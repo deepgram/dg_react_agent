@@ -2,202 +2,45 @@
  * DeepgramVoiceInteraction Type Definitions
  */
 
-/**
- * Connection states for Deepgram services
- */
-export type ConnectionState = 'connecting' | 'connected' | 'error' | 'closed';
+// Import types we need directly in this file
+import type { AgentOptions, AgentState, AgentFunction, AgentSettingsMessage, UpdateInstructionsPayload } from './agent';
+import type { ConnectionState, ServiceType, EndpointConfig, DeepgramError } from './connection';
+import type { TranscriptionOptions, TranscriptResponse } from './transcription';
+
+// Re-export all types from specific files
+export * from './agent';
+export * from './connection';
+export * from './transcription';
+export * from './voiceBot';
+
+// Additional exports for backward compatibility
+export type {
+  AgentOptions,
+  AgentState,
+  AgentFunction,
+  AgentSettingsMessage,
+  UpdateInstructionsPayload
+} from './agent';
+
+export type {
+  ConnectionState,
+  ServiceType,
+  EndpointConfig,
+  DeepgramError
+} from './connection';
+
+export type {
+  TranscriptionOptions,
+  TranscriptResponse
+} from './transcription';
 
 /**
- * Agent conversation states
- */
-export type AgentState = 'idle' | 'listening' | 'thinking' | 'speaking';
-
-/**
- * Service types used in status reporting
- */
-export type ServiceType = 'transcription' | 'agent';
-
-/**
- * Configuration for the Deepgram transcription API
- * Based on Deepgram /v1/listen query parameters
- */
-export interface TranscriptionOptions {
-  // Core parameters
-  model?: string;      // e.g., "nova-2"
-  language?: string;   // e.g., "en-US"
-  
-  // Feature toggles
-  diarize?: boolean;   // Enable speaker identification
-  smart_format?: boolean;
-  punctuate?: boolean;
-  endpointing?: boolean | number; // true or milliseconds
-  
-  // Additional parameters
-  interim_results?: boolean;
-  vad_events?: boolean;
-  
-  // Any additional parameters Deepgram supports
-  [key: string]: any;
-}
-
-/**
- * Configuration for the Deepgram agent API
- * Based on Deepgram /v1/agent query parameters and config
- */
-export interface AgentOptions {
-  // Core parameters
-  language?: string;     // e.g., "en-US"
-  
-  // Listen settings
-  listenModel?: string;  // e.g., "nova-2"
-  
-  // Think settings
-  thinkProviderType?: string; // e.g., "open_ai", "anthropic", etc.
-  thinkModel?: string;   // e.g., "gpt-4-turbo", "claude-3-sonnet"
-  instructions?: string; // Base instructions for the agent
-  
-  // Speak settings
-  voice?: string;        // e.g., "aura-asteria-en"
-  
-  // Optional greeting message
-  greeting?: string;
-  
-  // Function definitions for agent
-  functions?: AgentFunction[];
-  
-  // Additional settings
-  endpointing?: boolean | number; // true or milliseconds
-  
-  // Any additional parameters Deepgram supports
-  [key: string]: any;
-}
-
-/**
- * Function definition for agent
- */
-export interface AgentFunction {
-  name: string;
-  description: string;
-  parameters: any;
-  clientSide?: boolean;
-}
-
-/**
- * Agent message types for new Voice Agent API
- */
-export interface AgentSettingsMessage {
-  type: 'Settings';
-  audio: {
-    input: {
-      encoding: string;
-      sample_rate: number;
-    };
-    output?: {
-      encoding: string;
-      sample_rate: number;
-      bitrate?: number;
-      container?: string;
-    };
-  };
-  agent: {
-    language?: string;
-    listen?: {
-      provider: {
-        type: string;
-        model: string;
-        keyterms?: string[];
-      };
-    };
-    think: {
-      provider: {
-        type: string;
-        model: string;
-        temperature?: number;
-      };
-      endpoint?: {
-        url: string;
-        headers?: Record<string, string>;
-      };
-      functions?: AgentFunction[];
-      prompt?: string;
-    };
-    speak?: {
-      provider: {
-        type: string;
-        model?: string;
-        voice?: string;
-        model_id?: string;
-        language_code?: string;
-      };
-      endpoint?: {
-        url: string;
-        headers?: Record<string, string>;
-      };
-    };
-    greeting?: string;
-  };
-}
-
-/**
- * Configuration for Deepgram API endpoints
- */
-export interface EndpointConfig {
-  transcriptionUrl?: string; // Default: "wss://api.deepgram.com/v1/listen"
-  agentUrl?: string;         // Default: "wss://api.deepgram.com/v1/agent"
-}
-
-/**
- * Payload for updating agent instructions during an active session
- */
-export interface UpdateInstructionsPayload {
-  context?: string;
-  instructions?: string;
-  [key: string]: any;
-}
-
-/**
- * Transcript response from Deepgram
- * Simplified for now - will expand based on actual API responses
- */
-export interface TranscriptResponse {
-  type: 'transcript';
-  channel: number;
-  is_final: boolean;
-  speech_final: boolean;
-  channel_index: number[];
-  start: number;
-  duration: number;
-  alternatives: {
-    transcript: string;
-    confidence: number;
-    words: Array<{
-      word: string;
-      start: number;
-      end: number;
-      confidence: number;
-      speaker?: number;
-    }>;
-  }[];
-  metadata?: any;
-}
-
-/**
- * Agent response format
+ * LLM response format
  */
 export interface LLMResponse {
   type: 'llm';
   text: string;
   metadata?: any;
-}
-
-/**
- * Error object structure
- */
-export interface DeepgramError {
-  service: ServiceType;
-  code: string;
-  message: string;
-  details?: any;
 }
 
 /**
@@ -273,6 +116,26 @@ export interface DeepgramVoiceInteractionProps {
    * Enable verbose logging
    */
   debug?: boolean;
+
+  /**
+   * Options for auto-sleep functionality
+   */
+  sleepOptions?: {
+    /**
+     * Enable auto-sleep after inactivity
+     */
+    autoSleep?: boolean;
+    
+    /**
+     * Seconds of inactivity before auto-sleep (default: 30)
+     */
+    timeout?: number;
+    
+    /**
+     * Phrases that can wake the agent from sleep
+     */
+    wakeWords?: string[];
+  };
 }
 
 /**
@@ -298,4 +161,19 @@ export interface DeepgramVoiceInteractionHandle {
    * Interrupt the agent while it is speaking
    */
   interruptAgent: () => void;
+  
+  /**
+   * Put the agent to sleep
+   */
+  sleep: () => void;
+  
+  /**
+   * Wake the agent from sleep
+   */
+  wake: () => void;
+  
+  /**
+   * Toggle between sleep and wake states
+   */
+  toggleSleep: () => void;
 } 

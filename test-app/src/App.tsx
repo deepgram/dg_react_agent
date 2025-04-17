@@ -20,6 +20,7 @@ function App() {
   const [agentState, setAgentState] = useState<AgentState>('idle');
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isSleeping, setIsSleeping] = useState(false);
   const [connectionStates, setConnectionStates] = useState<Record<ServiceType, ConnectionState>>({
     transcription: 'closed',
     agent: 'closed'
@@ -38,12 +39,42 @@ function App() {
   }, [addLog]); // Depends on addLog
   
   const handleTranscriptUpdate = useCallback((transcript: TranscriptResponse) => {
-    if (transcript.alternatives?.[0]?.transcript) {
-      const text = transcript.alternatives[0].transcript;
-      setLastTranscript(text); // Update interim transcripts
+    // Log the full transcript structure for debugging
+    console.log('Full transcript response:', transcript);
+
+    // Use type assertion to handle the actual structure from Deepgram
+    // which differs from our TranscriptResponse type
+    const deepgramResponse = transcript as unknown as {
+      type: string;
+      channel: {
+        alternatives: Array<{
+          transcript: string;
+          confidence: number;
+          words: Array<{
+            word: string;
+            start: number;
+            end: number;
+            confidence: number;
+            speaker?: number;
+            punctuated_word?: string;
+          }>;
+        }>;
+      };
+      is_final: boolean;
+    };
+
+    if (deepgramResponse.channel?.alternatives?.[0]?.transcript) {
+      const text = deepgramResponse.channel.alternatives[0].transcript;
+      // Get speaker ID if available
+      const speakerId = deepgramResponse.channel.alternatives[0].words?.[0]?.speaker;
+      const displayText = speakerId !== undefined 
+        ? `Speaker ${speakerId}: ${text}` 
+        : text;
       
-      if (transcript.is_final) {
-        addLog(`Final transcript: ${text}`);
+      setLastTranscript(displayText);
+      
+      if (deepgramResponse.is_final) {
+        addLog(`Final transcript: ${displayText}`);
       }
     }
   }, [addLog]); // Depends on addLog
@@ -55,6 +86,7 @@ function App() {
   
   const handleAgentStateChange = useCallback((state: AgentState) => {
     setAgentState(state);
+    setIsSleeping(state === 'sleeping');
     addLog(`Agent state: ${state}`);
   }, [addLog]); // Depends on addLog
   
@@ -119,6 +151,13 @@ function App() {
     addLog('Updated agent context');
   };
   
+  const toggleSleep = () => {
+    if (deepgramRef.current) {
+      deepgramRef.current.toggleSleep();
+      addLog(`Toggled sleep state (current: ${isSleeping ? 'sleeping' : 'active'})`);
+    }
+  };
+  
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
       <h1>Deepgram Voice Interaction Test</h1>
@@ -130,7 +169,9 @@ function App() {
           model: 'nova-2',
           language: 'en-US',
           smart_format: true,
-          interim_results: true
+          interim_results: true,
+          diarize: true, // Enable speaker diarization
+          channels: 1
         }}
         agentOptions={{
           language: 'en',
@@ -181,6 +222,16 @@ function App() {
           style={{ padding: '10px 20px' }}
         >
           Update Context
+        </button>
+        <button 
+          onClick={toggleSleep} 
+          disabled={!isRecording}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: isSleeping ? '#e0f7fa' : 'transparent'
+          }}
+        >
+          {isSleeping ? 'Wake Up' : 'Put to Sleep'}
         </button>
       </div>
       
@@ -243,28 +294,36 @@ function App() {
       <div style={{ marginBottom: '20px' }}>
         <h2>Conversation</h2>
         <div style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px', minHeight: '50px' }}>
-          <strong>Your speech:</strong> {lastTranscript || '(No transcription yet)'}
+          <strong>Your speech:</strong> {
+            lastTranscript.startsWith('Speaker') ? (
+              <>
+                <span style={{ 
+                  display: 'inline-block',
+                  backgroundColor: lastTranscript.includes('Speaker 0') ? '#e3f2fd' : 
+                                  lastTranscript.includes('Speaker 1') ? '#ffebee' : '#f1f8e9',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  marginRight: '6px',
+                  fontSize: '12px',
+                  fontWeight: 'bold'
+                }}>
+                  {lastTranscript.split(':')[0]}
+                </span>
+                {lastTranscript.split(':').slice(1).join(':')}
+              </>
+            ) : lastTranscript || '(No transcription yet)'
+          }
         </div>
         <div style={{ border: '1px solid #ccc', padding: '10px', minHeight: '50px' }}>
           <strong>Agent response:</strong> {agentResponse || '(No response yet)'}
         </div>
       </div>
       
-      <div>
+      <div style={{ maxHeight: '200px', overflowY: 'scroll', border: '1px solid #eee', padding: '10px' }}>
         <h2>Logs</h2>
-        <div style={{ 
-          border: '1px solid #ccc', 
-          padding: '10px', 
-          height: '200px', 
-          overflowY: 'scroll',
-          fontFamily: 'monospace',
-          fontSize: '12px',
-          backgroundColor: '#f5f5f5'
-        }}>
-          {logs.map((log, index) => (
-            <div key={index}>{log}</div>
-          ))}
-        </div>
+        {logs.map((log, index) => (
+          <p key={index} style={{ margin: '2px 0', fontSize: '12px' }}>{log}</p>
+        ))}
       </div>
     </div>
   );

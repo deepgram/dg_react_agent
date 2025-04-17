@@ -327,6 +327,9 @@ function DeepgramVoiceInteraction(
     
     // Handle agent state messages
     if (data.type === 'UserStartedSpeaking') {
+      log('User started speaking - Clearing audio queue (barge-in)');
+      clearAudio(); // Barge-in: Stop agent playback
+      onUserStartedSpeaking?.();
       dispatch({ type: 'AGENT_STATE_CHANGE', state: 'listening' });
       return;
     }

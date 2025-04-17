@@ -1,10 +1,8 @@
+// Original version that directly exports the standalone component
 import DeepgramVoiceInteraction from './DeepgramVoiceInteraction';
+export { DeepgramVoiceInteraction };
 
-export {
-  DeepgramVoiceInteraction
-};
-
-// Re-export types from the type definitions
+// Re-export types
 export type {
   AgentState,
   ConnectionState, 

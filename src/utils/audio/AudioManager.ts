@@ -438,7 +438,7 @@ export class AudioManager {
     // Emit playing event only if we were previously playing
     if (wasPlaying) {
       this.log('📢 Emitting playing=false event');
-      this.emit({ type: 'playing', isPlaying: false });
+    this.emit({ type: 'playing', isPlaying: false });
     } else {
       this.log('ℹ️ Not emitting playing event since we weren\'t playing');
     }

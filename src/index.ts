@@ -1,25 +1,14 @@
 /**
- * Deepgram Voice Interaction React Component
+ * Deepgram Voice Interaction
  * 
- * A React component for real-time transcription and voice agent interactions
- * using Deepgram's WebSocket APIs.
+ * A React component library for integrating with Deepgram's voice agent and transcription services
  */
 
 // Export the main component
 export { DeepgramVoiceInteraction } from './components/DeepgramVoiceInteraction';
 
-// Export all types
-export type {
-  AgentState,
-  ConnectionState,
-  DeepgramError,
-  DeepgramVoiceInteractionHandle,
-  DeepgramVoiceInteractionProps,
-  LLMResponse, 
-  ServiceType,
-  TranscriptResponse,
-  TranscriptionOptions,
-  AgentOptions,
-  UpdateInstructionsPayload,
-  EndpointConfig
-} from './types'; 
+// Export types
+export * from './types';
+
+// Export contexts and hooks for advanced usage
+export * from './contexts'; 
