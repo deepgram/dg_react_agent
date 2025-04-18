@@ -1,54 +1,108 @@
-# React + TypeScript + Vite
+# Deepgram Voice Interaction Test App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is a simple demonstration app for the Deepgram Voice Interaction React component. It demonstrates the different operating modes of the component and allows testing its features.
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+1. Clone the repository
+2. Install dependencies: `npm install`
+3. Create a `.env` file in the root of this directory with your Deepgram API key:
+   ```
+   VITE_DEEPGRAM_API_KEY=your_api_key_here
+   ```
+4. Start the development server: `npm run dev`
 
-## Expanding the ESLint configuration
+## Component Modes
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+The DeepgramVoiceInteraction component supports three operating modes, all demonstrated in this application:
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+### 1. Transcription Only Mode
+
+To use the component in transcription-only mode:
+
+```tsx
+<DeepgramVoiceInteraction
+  ref={deepgramRef}
+  apiKey={apiKey}
+  transcriptionOptions={transcriptionOptions}
+  // No agentOptions prop - completely omit it, don't pass empty object
+  onReady={handleReady}
+  onTranscriptUpdate={handleTranscriptUpdate}
+  onError={handleError}
+  debug={true}
+/>
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2. Agent Only Mode
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+To use the component in agent-only mode:
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+```tsx
+<DeepgramVoiceInteraction
+  ref={deepgramRef}
+  apiKey={apiKey}
+  // No transcriptionOptions prop - completely omit it, don't pass empty object
+  agentOptions={agentOptions}
+  onReady={handleReady}
+  onAgentStateChange={handleAgentStateChange}
+  onAgentUtterance={handleAgentUtterance}
+  onError={handleError}
+  debug={true}
+/>
 ```
+
+### 3. Dual Mode (Transcription + Agent)
+
+To use the component with both transcription and agent functionality:
+
+```tsx
+<DeepgramVoiceInteraction
+  ref={deepgramRef}
+  apiKey={apiKey}
+  transcriptionOptions={transcriptionOptions}
+  agentOptions={agentOptions}
+  onReady={handleReady}
+  onTranscriptUpdate={handleTranscriptUpdate}
+  onAgentStateChange={handleAgentStateChange}
+  onAgentUtterance={handleAgentUtterance}
+  onError={handleError}
+  debug={true}
+/>
+```
+
+## Important Notes
+
+1. **Empty Objects**: Never pass empty objects (`{}`) for options you don't want to use. This will still initialize that service. Instead, completely omit the prop.
+
+2. **Configuration Options**: Use `useMemo` for your configuration objects to prevent unnecessary re-renders:
+
+```tsx
+const transcriptionOptions = useMemo(() => ({
+  model: 'nova-2',
+  language: 'en-US',
+  interim_results: true,
+  smart_format: true,
+}), []);
+
+const agentOptions = useMemo(() => ({
+  instructions: 'You are a helpful assistant...',
+  voice: 'aura-asteria-en',
+  thinkModel: 'gpt-4o-mini',
+}), []);
+```
+
+3. **Callbacks**: Only define and pass the callbacks that are relevant to your chosen mode:
+   - For transcription: `onTranscriptUpdate`, `onUserStartedSpeaking`, `onUserStoppedSpeaking`
+   - For agent: `onAgentStateChange`, `onAgentUtterance`, `onPlaybackStateChange`
+   - Both modes: `onReady`, `onConnectionStateChange`, `onError`
+
+## Testing Tips
+
+- Use the browser console to see debug logs (with `debug={true}`)
+- Test microphone access and permissions
+- Try different operating modes by modifying the component props
+- Experiment with different transcription models and agent configurations
+
+## License
+
+MIT

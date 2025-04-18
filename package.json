@@ -1,5 +1,5 @@
 {
-  "name": "deepgram-voice-interaction-react",
+  "name": "deepgram-react",
   "version": "0.1.0",
   "description": "A React component for real-time transcription and voice agent interactions using Deepgram APIs",
   "main": "dist/index.js",
@@ -35,6 +35,7 @@
   "devDependencies": {
     "@rollup/plugin-commonjs": "^22.0.0",
     "@rollup/plugin-node-resolve": "^13.3.0",
+    "@rollup/plugin-replace": "^6.0.2",
     "@rollup/plugin-typescript": "^8.3.2",
     "@rollup/plugin-url": "^8.0.2",
     "@types/jest": "^28.1.1",
@@ -49,6 +50,7 @@
     "rollup": "^2.75.6",
     "rollup-plugin-cleaner": "^1.0.0",
     "rollup-plugin-peer-deps-external": "^2.2.4",
+    "rollup-plugin-raw": "^0.0.1",
     "rollup-plugin-terser": "^7.0.2",
     "ts-jest": "^28.0.4",
     "typescript": "^4.7.3"

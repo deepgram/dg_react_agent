@@ -2,10 +2,13 @@
  * DeepgramVoiceInteraction Type Definitions
  */
 
-// Import types we need directly in this file
-import type { AgentOptions, AgentState, AgentFunction, AgentSettingsMessage, UpdateInstructionsPayload } from './agent';
+// Import types only needed INTERNALLY by types defined within THIS file
+// We don't need to explicitly import types just for re-exporting if using export *
+// import type { AgentOptions, AgentState, AgentFunction, AgentSettingsMessage, UpdateInstructionsPayload } from './agent'; // REMOVED - Handled by export *
 import type { ConnectionState, ServiceType, EndpointConfig, DeepgramError } from './connection';
 import type { TranscriptionOptions, TranscriptResponse } from './transcription';
+// Import AgentState specifically because DeepgramVoiceInteractionProps uses it directly
+import type { AgentState, AgentOptions, UpdateInstructionsPayload } from './agent';
 
 // Re-export all types from specific files
 export * from './agent';
@@ -13,26 +16,32 @@ export * from './connection';
 export * from './transcription';
 export * from './voiceBot';
 
-// Additional exports for backward compatibility
+// Remove the conflicting explicit re-export blocks for types already covered by export *
+/* // REMOVED Block
 export type {
   AgentOptions,
-  AgentState,
+  AgentState, 
   AgentFunction,
   AgentSettingsMessage,
   UpdateInstructionsPayload
 } from './agent';
+*/
 
+/* // REMOVED Block 
 export type {
   ConnectionState,
   ServiceType,
   EndpointConfig,
   DeepgramError
 } from './connection';
+*/
 
+/* // REMOVED Block
 export type {
   TranscriptionOptions,
   TranscriptResponse
 } from './transcription';
+*/
 
 /**
  * LLM response format
@@ -45,6 +54,7 @@ export interface LLMResponse {
 
 /**
  * Props for the DeepgramVoiceInteraction component
+ * This interface uses AgentState, AgentOptions, etc.
  */
 export interface DeepgramVoiceInteractionProps {
   /**
@@ -60,7 +70,7 @@ export interface DeepgramVoiceInteractionProps {
   /**
    * Options for the agent service
    */
-  agentOptions?: AgentOptions;
+  agentOptions?: AgentOptions; // Uses imported AgentOptions
   
   /**
    * Configuration for API endpoints
@@ -85,7 +95,7 @@ export interface DeepgramVoiceInteractionProps {
   /**
    * Called when the agent's state changes
    */
-  onAgentStateChange?: (state: AgentState) => void;
+  onAgentStateChange?: (state: AgentState) => void; // Uses imported AgentState
   
   /**
    * Called when the agent produces text output
@@ -140,6 +150,7 @@ export interface DeepgramVoiceInteractionProps {
 
 /**
  * Control methods for the DeepgramVoiceInteraction component
+ * This interface uses UpdateInstructionsPayload
  */
 export interface DeepgramVoiceInteractionHandle {
   /**
@@ -155,7 +166,7 @@ export interface DeepgramVoiceInteractionHandle {
   /**
    * Update the agent's instructions or context during an active session
    */
-  updateAgentInstructions: (payload: UpdateInstructionsPayload) => void;
+  updateAgentInstructions: (payload: UpdateInstructionsPayload) => void; // Uses imported UpdateInstructionsPayload
   
   /**
    * Interrupt the agent while it is speaking
@@ -178,13 +189,13 @@ export interface DeepgramVoiceInteractionHandle {
   toggleSleep: () => void;
 }
 
-/**
- * Possible states of the agent interaction
- */
+// REMOVE the duplicate AgentState definition at the end of this file
+/* // REMOVED Definition
 export type AgentState =
-  | 'idle'       // Agent is ready, not actively listening, speaking, or thinking
-  | 'listening'  // Agent is actively processing user audio input
-  | 'thinking'   // Agent has received user input and is processing/generating a response
-  | 'speaking'   // Agent is generating or sending audio output
-  | 'entering_sleep' // Intermediate state while transitioning to sleep
-  | 'sleeping';  // Agent is paused, ignoring audio input until woken 
+  | 'idle'
+  | 'listening'
+  | 'thinking'
+  | 'speaking'
+  | 'entering_sleep'
+  | 'sleeping';
+*/ 
