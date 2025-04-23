@@ -208,7 +208,7 @@ export class AudioManager {
     }
     
     let objectUrl: string | null = null;
-
+    
     try {
       this.log('Initializing AudioManager');
       

@@ -118,7 +118,7 @@ function SimpleTranscriber() {
     interim_results: true,
     smart_format: true,
   }), []);
-
+  
   // --- Callbacks ---
   const handleReady = useCallback((ready: boolean) => {
     console.log(`Transcription component ready: ${ready}`);
@@ -143,7 +143,7 @@ function SimpleTranscriber() {
   // --- Control Functions ---
   const startTranscription = () => deepgramRef.current?.start();
   const stopTranscription = () => deepgramRef.current?.stop();
-
+  
   return (
     <div>
       <h1>Live Transcription</h1>
@@ -194,7 +194,7 @@ function SimpleAgent() {
   const [isReady, setIsReady] = useState(false);
   const [agentState, setAgentState] = useState<AgentState>('idle');
   const [lastAgentResponse, setLastAgentResponse] = useState('');
-
+  
   // Define agent options (use useMemo to prevent unnecessary re-renders)
   const agentOptions = useMemo<AgentOptions>(() => ({
     instructions: 'You are a friendly chatbot.',

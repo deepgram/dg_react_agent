@@ -71,6 +71,7 @@ function DeepgramVoiceInteraction(
     onTranscriptUpdate,
     onAgentStateChange,
     onAgentUtterance,
+    onUserMessage,
     onUserStartedSpeaking,
     onUserStoppedSpeaking,
     onPlaybackStateChange,
@@ -152,7 +153,7 @@ function DeepgramVoiceInteraction(
       });
       return;
     }
-    
+
     // Determine which services are being configured
     const isTranscriptionConfigured = !!transcriptionOptions;
     const isAgentConfigured = !!agentOptions;
@@ -190,11 +191,11 @@ function DeepgramVoiceInteraction(
 
       // Base transcription parameters
       const baseTranscriptionParams = {
-        ...transcriptionOptions,
-        sample_rate: transcriptionOptions.sample_rate || 16000,
-        encoding: transcriptionOptions.encoding || 'linear16',
-        channels: transcriptionOptions.channels || 1,
-      };
+      ...transcriptionOptions,
+      sample_rate: transcriptionOptions.sample_rate || 16000,
+      encoding: transcriptionOptions.encoding || 'linear16',
+      channels: transcriptionOptions.channels || 1,
+    };
 
       // Check for Nova-3 Keyterm Prompting conditions
       const useKeytermPrompting = 
@@ -244,26 +245,26 @@ function DeepgramVoiceInteraction(
       }
       
       // Create Transcription WebSocket manager
-      transcriptionManagerRef.current = new WebSocketManager({
+    transcriptionManagerRef.current = new WebSocketManager({
         url: transcriptionUrl,
-        apiKey,
-        service: 'transcription',
+      apiKey,
+      service: 'transcription',
         queryParams: useKeytermPrompting ? undefined : transcriptionQueryParams, 
-        debug,
-      });
-      
-      // Set up event listeners for transcription WebSocket
+      debug,
+    });
+
+    // Set up event listeners for transcription WebSocket
       transcriptionUnsubscribe = transcriptionManagerRef.current.addEventListener((event) => {
-        if (event.type === 'state') {
-          log('Transcription state:', event.state);
-          dispatch({ type: 'CONNECTION_STATE_CHANGE', service: 'transcription', state: event.state });
-          onConnectionStateChange?.('transcription', event.state);
-        } else if (event.type === 'message') {
-          handleTranscriptionMessage(event.data);
-        } else if (event.type === 'error') {
-          handleError(event.error);
-        }
-      });
+      if (event.type === 'state') {
+        log('Transcription state:', event.state);
+        dispatch({ type: 'CONNECTION_STATE_CHANGE', service: 'transcription', state: event.state });
+        onConnectionStateChange?.('transcription', event.state);
+      } else if (event.type === 'message') {
+        handleTranscriptionMessage(event.data);
+      } else if (event.type === 'error') {
+        handleError(event.error);
+      }
+    });
     } else {
       log('Transcription service not configured, skipping setup');
     }
@@ -277,26 +278,26 @@ function DeepgramVoiceInteraction(
         service: 'agent',
         debug,
       });
-      
-      // Set up event listeners for agent WebSocket
+
+    // Set up event listeners for agent WebSocket
       agentUnsubscribe = agentManagerRef.current.addEventListener((event) => {
-        if (event.type === 'state') {
-          log('Agent state:', event.state);
-          dispatch({ type: 'CONNECTION_STATE_CHANGE', service: 'agent', state: event.state });
-          onConnectionStateChange?.('agent', event.state);
-          
-          // Send settings message when connection is established
-          if (event.state === 'connected') {
-            sendAgentSettings();
-          }
-        } else if (event.type === 'message') {
-          handleAgentMessage(event.data);
-        } else if (event.type === 'binary') {
-          handleAgentAudio(event.data);
-        } else if (event.type === 'error') {
-          handleError(event.error);
+      if (event.type === 'state') {
+        log('Agent state:', event.state);
+        dispatch({ type: 'CONNECTION_STATE_CHANGE', service: 'agent', state: event.state });
+        onConnectionStateChange?.('agent', event.state);
+        
+        // Send settings message when connection is established
+        if (event.state === 'connected') {
+          sendAgentSettings();
         }
-      });
+      } else if (event.type === 'message') {
+        handleAgentMessage(event.data);
+      } else if (event.type === 'binary') {
+        handleAgentAudio(event.data);
+      } else if (event.type === 'error') {
+        handleError(event.error);
+      }
+    });
     } else {
       log('Agent service not configured, skipping setup');
     }
@@ -308,43 +309,43 @@ function DeepgramVoiceInteraction(
       audioManagerRef.current = new AudioManager({
         debug,
       });
-      
-      // Set up event listeners for audio manager
+
+    // Set up event listeners for audio manager
       audioUnsubscribe = audioManagerRef.current.addEventListener((event) => {
-        if (event.type === 'ready') {
-          log('Audio manager ready');
-        } else if (event.type === 'recording') {
-          log('Recording state:', event.isRecording);
-          dispatch({ type: 'RECORDING_STATE_CHANGE', isRecording: event.isRecording });
-        } else if (event.type === 'playing') {
-          log('Playing state:', event.isPlaying);
-          dispatch({ type: 'PLAYBACK_STATE_CHANGE', isPlaying: event.isPlaying });
-        } else if (event.type === 'error') {
-          handleError(event.error);
-        } else if (event.type === 'data') {
-          sendAudioData(event.data);
-        }
-      });
-      
-      // Initialize audio manager
-      audioManagerRef.current.initialize()
-        .then(() => {
-          log('AudioManager initialized successfully in useEffect');
+      if (event.type === 'ready') {
+        log('Audio manager ready');
+      } else if (event.type === 'recording') {
+        log('Recording state:', event.isRecording);
+        dispatch({ type: 'RECORDING_STATE_CHANGE', isRecording: event.isRecording });
+      } else if (event.type === 'playing') {
+        log('Playing state:', event.isPlaying);
+        dispatch({ type: 'PLAYBACK_STATE_CHANGE', isPlaying: event.isPlaying });
+      } else if (event.type === 'error') {
+        handleError(event.error);
+      } else if (event.type === 'data') {
+        sendAudioData(event.data);
+      }
+    });
+
+    // Initialize audio manager
+    audioManagerRef.current.initialize()
+      .then(() => {
+        log('AudioManager initialized successfully in useEffect');
           
           // Determine if the component is ready based on configured services
           // For now, we consider it ready as soon as the audio manager is ready
           // The actual WebSocket connections will be made in the start() method
-          dispatch({ type: 'READY_STATE_CHANGE', isReady: true }); 
-        })
-        .catch(error => {
-          handleError({
-            service: 'transcription',
-            code: 'audio_init_error',
-            message: 'Failed to initialize audio',
-            details: error,
-          });
-          dispatch({ type: 'READY_STATE_CHANGE', isReady: false });
+        dispatch({ type: 'READY_STATE_CHANGE', isReady: true }); 
+      })
+      .catch(error => {
+        handleError({
+          service: 'transcription',
+          code: 'audio_init_error',
+          message: 'Failed to initialize audio',
+          details: error,
         });
+        dispatch({ type: 'READY_STATE_CHANGE', isReady: false });
+      });
     } else {
       log('Neither transcription nor agent configured, skipping audio setup');
       // This should never happen due to the check at the beginning of the effect
@@ -358,17 +359,17 @@ function DeepgramVoiceInteraction(
       
       if (transcriptionManagerRef.current) {
         transcriptionManagerRef.current.close();
-        transcriptionManagerRef.current = null;
+      transcriptionManagerRef.current = null;
       }
       
       if (agentManagerRef.current) {
         agentManagerRef.current.close();
-        agentManagerRef.current = null;
+      agentManagerRef.current = null;
       }
       
       if (audioManagerRef.current) {
         audioManagerRef.current.dispose();
-        audioManagerRef.current = null;
+      audioManagerRef.current = null;
       }
       
       // Ensure state is reset on unmount
@@ -419,7 +420,7 @@ function DeepgramVoiceInteraction(
     // Check if agent is in sleep mode
     const isSleepingOrEntering = 
       agentManagerRef.current && (
-        stateRef.current.agentState === 'sleeping' || 
+      stateRef.current.agentState === 'sleeping' || 
         stateRef.current.agentState === 'entering_sleep'
       );
       
@@ -554,15 +555,27 @@ function DeepgramVoiceInteraction(
     }
     
     // Handle conversation text
-    if (data.type === 'ConversationText' && data.role === 'assistant') {
-      const response: LLMResponse = {
-        type: 'llm',
-        text: data.content || '',
-        metadata: data,
-      };
-      
-      onAgentUtterance?.(response);
-      return;
+    if (data.type === 'ConversationText') {
+      if (data.role === 'assistant') {
+        const response: LLMResponse = {
+          type: 'llm',
+          text: data.content || '',
+          metadata: data,
+        };
+        
+        onAgentUtterance?.(response);
+        return;
+      } 
+      else if (data.role === 'user') {
+        const response = {
+          type: 'user' as const,
+          text: data.content || '',
+          metadata: data,
+        };
+        
+        onUserMessage?.(response);
+        return;
+      }
     }
     
     // Handle errors
@@ -622,15 +635,15 @@ function DeepgramVoiceInteraction(
     
     // Send to agent service if configured, connected, and not in sleep mode
     if (agentManagerRef.current) {
-      // Check if sleeping or entering sleep before sending to agent
-      const isSleepingOrEntering = 
-        stateRef.current.agentState === 'sleeping' || 
-        stateRef.current.agentState === 'entering_sleep';
-        
+    // Check if sleeping or entering sleep before sending to agent
+    const isSleepingOrEntering = 
+      stateRef.current.agentState === 'sleeping' || 
+      stateRef.current.agentState === 'entering_sleep';
+      
       if (agentManagerRef.current.getState() === 'connected' && !isSleepingOrEntering) {
-        agentManagerRef.current.sendBinary(data);
-      } else if (isSleepingOrEntering) {
-        sleepLog('Skipping sendAudioData to agent (state:', stateRef.current.agentState, ')');
+      agentManagerRef.current.sendBinary(data);
+    } else if (isSleepingOrEntering) {
+      sleepLog('Skipping sendAudioData to agent (state:', stateRef.current.agentState, ')');
       }
     }
   };
@@ -725,7 +738,7 @@ function DeepgramVoiceInteraction(
       }
       
       // Signal not ready after stopping
-      dispatch({ type: 'READY_STATE_CHANGE', isReady: false });
+      dispatch({ type: 'READY_STATE_CHANGE', isReady: false }); 
       return Promise.resolve();
     } catch (error) {
       log('Error stopping:', error);
@@ -828,8 +841,8 @@ function DeepgramVoiceInteraction(
     }
     
     if (stateRef.current.agentState !== 'sleeping') {
-      sleepLog(`wake() called but state is ${stateRef.current.agentState}, not 'sleeping'. Aborting wake.`);
-      return;
+        sleepLog(`wake() called but state is ${stateRef.current.agentState}, not 'sleeping'. Aborting wake.`);
+        return;
     }
     
     sleepLog('wake() method called from sleeping state');
@@ -856,6 +869,21 @@ function DeepgramVoiceInteraction(
     sleepLog('Sleep toggle action dispatched or ignored');
   };
 
+  // Inject a message directly to the agent
+  const injectAgentMessage = (message: string): void => {
+    if (!agentManagerRef.current) {
+      log('Cannot inject message: agent manager not initialized or not configured');
+      return;
+    }
+    
+    log('Injecting agent message:', message);
+    
+    agentManagerRef.current.sendJSON({
+      type: 'InjectAgentMessage',
+      content: message
+    });
+  };
+
   // Expose methods via ref
   useImperativeHandle(ref, () => ({
     start,
@@ -865,6 +893,7 @@ function DeepgramVoiceInteraction(
     sleep,
     wake,
     toggleSleep,
+    injectAgentMessage,
   }));
 
   // Render nothing (headless component)

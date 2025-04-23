@@ -20,7 +20,7 @@ export * from './voiceBot';
 /* // REMOVED Block
 export type {
   AgentOptions,
-  AgentState, 
+  AgentState,
   AgentFunction,
   AgentSettingsMessage,
   UpdateInstructionsPayload
@@ -48,6 +48,15 @@ export type {
  */
 export interface LLMResponse {
   type: 'llm';
+  text: string;
+  metadata?: any;
+}
+
+/**
+ * User message response format
+ */
+export interface UserMessageResponse {
+  type: 'user';
   text: string;
   metadata?: any;
 }
@@ -101,6 +110,11 @@ export interface DeepgramVoiceInteractionProps {
    * Called when the agent produces text output
    */
   onAgentUtterance?: (utterance: LLMResponse) => void;
+  
+  /**
+   * Called when a user message is received from the server (role:user in ConversationText)
+   */
+  onUserMessage?: (message: UserMessageResponse) => void;
   
   /**
    * Called when audio playback state changes
@@ -187,6 +201,11 @@ export interface DeepgramVoiceInteractionHandle {
    * Toggle between sleep and wake states
    */
   toggleSleep: () => void;
+  
+  /**
+   * Inject a message directly to the agent
+   */
+  injectAgentMessage: (message: string) => void;
 }
 
 // REMOVE the duplicate AgentState definition at the end of this file

@@ -4,6 +4,7 @@ import {
   DeepgramVoiceInteractionHandle,
   TranscriptResponse,
   LLMResponse,
+  UserMessageResponse,
   AgentState,
   ConnectionState,
   ServiceType,
@@ -17,6 +18,7 @@ function App() {
   const [isReady, setIsReady] = useState(false);
   const [lastTranscript, setLastTranscript] = useState('');
   const [agentResponse, setAgentResponse] = useState('');
+  const [userMessage, setUserMessage] = useState('');
   const [agentState, setAgentState] = useState<AgentState>('idle');
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -56,6 +58,9 @@ function App() {
     instructions: 'You are a helpful voice assistant. Keep your responses concise and informative.',
     greeting: 'Hello! How can I assist you today?'
   }), []); // Empty dependency array means this object is created only once
+  
+  // Memoize endpoint config to prevent unnecessary WebSocket reconnections
+
   
   // Helper to add logs - memoized
   const addLog = useCallback((message: string) => {
@@ -117,6 +122,11 @@ function App() {
   const handleAgentUtterance = useCallback((utterance: LLMResponse) => {
     setAgentResponse(utterance.text);
     addLog(`Agent said: ${utterance.text}`);
+  }, [addLog]); // Depends on addLog
+  
+  const handleUserMessage = useCallback((message: UserMessageResponse) => {
+    setUserMessage(message.text);
+    addLog(`User message from server: ${message.text}`);
   }, [addLog]); // Depends on addLog
   
   const handleAgentStateChange = useCallback((state: AgentState) => {
@@ -222,6 +232,17 @@ function App() {
     }
   };
   
+  const injectMessage = () => {
+    const testMessage = "This is a test message injected programmatically!";
+    
+    if (deepgramRef.current) {
+      deepgramRef.current.injectAgentMessage(testMessage);
+      addLog(`Injected message: "${testMessage}"`);
+    } else {
+      addLog('Error: Could not inject message, deepgramRef is null');
+    }
+  };
+  
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
       <h1>Deepgram Voice Interaction Test</h1>
@@ -234,6 +255,7 @@ function App() {
         onReady={handleReady}
         onTranscriptUpdate={handleTranscriptUpdate}
         onAgentUtterance={handleAgentUtterance}
+        onUserMessage={handleUserMessage}
         onAgentStateChange={handleAgentStateChange}
         onConnectionStateChange={handleConnectionStateChange}
         onError={handleError}
@@ -293,6 +315,13 @@ function App() {
         >
           {(isSleeping || agentState === 'entering_sleep') ? 'Wake Up' : 'Put to Sleep'}
         </button>
+        <button 
+          onClick={injectMessage}
+          disabled={!isRecording}
+          style={{ padding: '10px 20px' }}
+        >
+          Inject Message
+        </button>
       </div>
       
       {isRecording && (
@@ -327,6 +356,11 @@ function App() {
           <h3>Agent Response</h3>
           <pre>{agentResponse || '(Waiting for agent response...)'}</pre>
         </div>
+      </div>
+      
+      <div style={{ marginTop: '20px', border: '1px solid #ccc', padding: '10px' }}>
+        <h3>User Message from Server</h3>
+        <pre>{userMessage || '(No user messages from server yet...)'}</pre>
       </div>
       
       <div style={{ marginTop: '20px', border: '1px solid #eee', padding: '10px' }}>
