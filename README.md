@@ -2,7 +2,7 @@
 
 A headless React component designed to drastically simplify the integration of Deepgram's real-time transcription and voice agent capabilities into web applications. It handles the low-level complexities of WebSocket connections, browser microphone access, and agent audio playback, allowing you to focus on building your application's UI and logic.
 
-[![npm version](https://badge.fury.io/js/deepgram-voice-interaction-react.svg)](https://badge.fury.io/js/deepgram-voice-interaction-react) <!-- Placeholder - update if published -->
+[![npm version](https://badge.fury.io/js/deepgram-react.svg)](https://badge.fury.io/js/deepgram-react) <!-- Placeholder - update if published -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
@@ -11,8 +11,8 @@ A headless React component designed to drastically simplify the integration of D
 -   **Voice Agent Interaction:** Connects to Deepgram's Voice Agent API, enabling two-way voice conversations.
 -   **Microphone Handling:** Manages browser microphone access (requesting permissions) and audio capture using the Web Audio API.
 -   **Agent Audio Playback:** Automatically plays audio responses received from the voice agent using the Web Audio API.
--   **Robust Control:** Provides methods to programmatically start, stop, interrupt the agent, toggle sleep mode, and update agent instructions.
--   **Event-Driven:** Uses callbacks (`props`) to deliver transcription updates, agent state changes, agent utterances, connection status, errors, and more.
+-   **Robust Control:** Provides methods to programmatically start, stop, interrupt the agent, toggle sleep mode, update agent instructions, and inject messages.
+-   **Event-Driven:** Uses callbacks (`props`) to deliver transcription updates, agent state changes, agent utterances, user messages, connection status, errors, and more.
 *   **Keyterm Prompting:** Supports Deepgram's Keyterm Prompting feature for improved accuracy on specific terms (requires Nova-3 model).
 *   **Sleep/Wake:** Includes functionality to put the agent into a sleep state where it ignores audio input until explicitly woken.
 -   **Headless:** Contains **no UI elements**, giving you complete control over the look and feel of your application.
@@ -75,17 +75,18 @@ Choose your mode based on these criteria:
 | `onUserStoppedSpeaking` | ✅ | ❌ | ✅ |
 | `onAgentStateChange` | ❌ | ✅ | ✅ |
 | `onAgentUtterance` | ❌ | ✅ | ✅ |
+| `onUserMessage` | ❌ | ✅ | ✅ |
 | `onPlaybackStateChange` | ❌ | ✅ | ✅ |
 
 ## Installation
 
 ```bash
-npm install deepgram-voice-interaction-react
+npm install deepgram-react
 # or
-yarn add deepgram-voice-interaction-react
+yarn add deepgram-react
 ```
 
-*(Note: Replace `deepgram-voice-interaction-react` with the actual package name if published, or adjust the path for local usage.)*
+*(Note: For local development, adjust the path as needed.)*
 
 ## Getting Started
 
@@ -98,13 +99,13 @@ This example focuses solely on getting live transcripts from microphone input.
 ```tsx
 import React, { useRef, useState, useCallback, useMemo } from 'react';
 // Adjust import path based on your setup (package vs local)
-import { DeepgramVoiceInteraction } from 'deepgram-voice-interaction-react'; 
+import { DeepgramVoiceInteraction } from 'deepgram-react'; 
 import type { 
   DeepgramVoiceInteractionHandle, 
   TranscriptResponse,
   TranscriptionOptions,
   DeepgramError 
-} from 'deepgram-voice-interaction-react';
+} from 'deepgram-react';
 
 function SimpleTranscriber() {
   const deepgramRef = useRef<DeepgramVoiceInteractionHandle>(null);
@@ -180,20 +181,22 @@ This example focuses on interacting with a voice agent, using its responses.
 ```tsx
 import React, { useRef, useState, useCallback, useMemo } from 'react';
 // Adjust import path based on your setup (package vs local)
-import { DeepgramVoiceInteraction } from 'deepgram-voice-interaction-react';
+import { DeepgramVoiceInteraction } from 'deepgram-react';
 import type { 
   DeepgramVoiceInteractionHandle, 
   AgentState, 
   LLMResponse,
   AgentOptions,
-  DeepgramError 
-} from 'deepgram-voice-interaction-react';
+  DeepgramError,
+  UserMessageResponse // Added for the new callback
+} from 'deepgram-react';
 
 function SimpleAgent() {
   const deepgramRef = useRef<DeepgramVoiceInteractionHandle>(null);
   const [isReady, setIsReady] = useState(false);
   const [agentState, setAgentState] = useState<AgentState>('idle');
   const [lastAgentResponse, setLastAgentResponse] = useState('');
+  const [lastUserMessage, setLastUserMessage] = useState(''); // Added for user messages
   
   // Define agent options (use useMemo to prevent unnecessary re-renders)
   const agentOptions = useMemo<AgentOptions>(() => ({
@@ -221,6 +224,12 @@ function SimpleAgent() {
     setLastAgentResponse(utterance.text);
   }, []);
   
+  // Handle user messages from the server
+  const handleUserMessage = useCallback((message: UserMessageResponse) => {
+    console.log('User message from server:', message.text);
+    setLastUserMessage(message.text);
+  }, []);
+  
   const handleError = useCallback((error: DeepgramError) => {
     console.error('Deepgram Error:', error);
   }, []);
@@ -229,6 +238,7 @@ function SimpleAgent() {
   const startInteraction = () => deepgramRef.current?.start();
   const stopInteraction = () => deepgramRef.current?.stop();
   const interruptAgent = () => deepgramRef.current?.interruptAgent();
+  const injectTestMessage = () => deepgramRef.current?.injectAgentMessage("Hello from the client!");
 
   return (
     <div>
@@ -242,6 +252,7 @@ function SimpleAgent() {
         onReady={handleReady}
         onAgentStateChange={handleAgentStateChange}
         onAgentUtterance={handleAgentUtterance}
+        onUserMessage={handleUserMessage} // Added new callback
         onError={handleError}
         debug={true} // Enable console logs from the component
       />
@@ -250,11 +261,14 @@ function SimpleAgent() {
         <button onClick={startInteraction} disabled={!isReady}>Start Interaction</button>
         <button onClick={stopInteraction} disabled={!isReady}>Stop Interaction</button>
         <button onClick={interruptAgent} disabled={!isReady}>Interrupt Agent</button>
+        <button onClick={injectTestMessage} disabled={!isReady}>Inject Message</button> {/* Added inject button */}
       </div>
       
       <h2>Agent State: {agentState}</h2>
       <h2>Last Agent Response:</h2>
       <p>{lastAgentResponse || '(Waiting...)'}</p>
+      <h2>Last User Message (from Server):</h2> {/* Added display for user message */} 
+      <p>{lastUserMessage || '(Waiting...)'}</p>
     </div>
   );
 }
@@ -268,34 +282,15 @@ Leverage both services simultaneously. Get live transcripts *while* interacting 
 
 ```tsx
 // (Combine imports, state, callbacks, and controls from examples 1 & 2)
+import { DeepgramVoiceInteraction } from 'deepgram-react';
+import type { 
+  // ... include UserMessageResponse ... 
+} from 'deepgram-react';
 // ...
 
 function CombinedInteraction() {
-  const deepgramRef = useRef<DeepgramVoiceInteractionHandle>(null);
-  const [isReady, setIsReady] = useState(false);
-  const [lastTranscript, setLastTranscript] = useState('');
-  const [agentState, setAgentState] = useState<AgentState>('idle');
-  const [lastAgentResponse, setLastAgentResponse] = useState('');
-
-  // Define options (use useMemo to prevent unnecessary re-renders)
-  const transcriptionOptions = useMemo<TranscriptionOptions>(() => ({
-    model: 'nova-2',
-    language: 'en-US',
-    interim_results: true,
-    smart_format: true,
-  }), []);
-  
-  const agentOptions = useMemo<AgentOptions>(() => ({
-    instructions: 'You are a helpful voice assistant.',
-    voice: 'aura-asteria-en',
-    thinkModel: 'gpt-4o-mini',
-  }), []);
-  
-  // Define all necessary callbacks (handleReady, handleTranscriptUpdate, handleAgentStateChange, etc.)
-  // ... see previous examples ...
-
-  // Define control functions (startInteraction, stopInteraction, etc.)
-  // ... see previous examples ...
+  // ... Add state for user messages ...
+  // ... Add handleUserMessage callback ...
   
   return (
     <div>
@@ -312,13 +307,14 @@ function CombinedInteraction() {
         onTranscriptUpdate={/*...*/}
         onAgentStateChange={/*...*/}
         onAgentUtterance={/*...*/}
+        onUserMessage={/* handleUserMessage */}
         onError={/*...*/}
         onPlaybackStateChange={(playing) => console.log('Agent playing:', playing)}
         debug={true}
       />
       
       <div>
-        {/* Add buttons for Start, Stop, Interrupt, Toggle Sleep, Update Context etc. */}
+        {/* Add buttons for Start, Stop, Interrupt, Inject Message, Toggle Sleep, Update Context etc. */}
       </div>
       
       {/* Display relevant state */}
@@ -327,6 +323,8 @@ function CombinedInteraction() {
       <p>{lastTranscript || '(Waiting...)'}</p>
       <h2>Last Agent Response:</h2>
       <p>{lastAgentResponse || '(Waiting...)'}</p>
+      <h2>Last User Message (from Server):</h2> {/* Added display for user message */}
+      <p>{/* Display user message state */}</p>
     </div>
   );
 }
@@ -346,6 +344,7 @@ export default CombinedInteraction;
     *   `wake()`: Wakes the agent from the sleep state.
     *   `toggleSleep()`: Switches between active and sleep states.
     *   `updateAgentInstructions(payload)`: Sends new context or instructions to the agent mid-conversation.
+    *   `injectAgentMessage(message: string)`: Sends a message directly into the agent conversation programmatically. 
 *   **Configuration via Props:** Configure the component's behavior by passing props:
     *   `apiKey`: Your Deepgram API key (required).
     *   `transcriptionOptions`: An object matching Deepgram's `/v1/listen` query parameters. **Omit completely** (not just `{}`) when not using transcription.
@@ -358,6 +357,7 @@ export default CombinedInteraction;
     *   `onTranscriptUpdate(transcriptData: TranscriptResponse)`: Delivers live transcription results (both interim and final). Check `transcriptData.is_final`.
     *   `onAgentStateChange(state: AgentState)`: Reports the agent's current state ('idle', 'listening', 'thinking', 'speaking', 'entering_sleep', 'sleeping').
     *   `onAgentUtterance(utterance: LLMResponse)`: Provides the text content generated by the agent.
+    *   `onUserMessage(message: UserMessageResponse)`: Provides user messages received from the server (from `ConversationText` events with `role:user`).
     *   `onUserStartedSpeaking()` / `onUserStoppedSpeaking()`: Triggered based on voice activity detection (if `vad_events` is enabled in `transcriptionOptions` or implicitly by the agent endpoint).
     *   `onPlaybackStateChange(isPlaying: boolean)`: Indicates if the agent audio is currently playing.
     *   `onError(error: DeepgramError)`: Reports errors from microphone access, WebSockets, or the Deepgram APIs.
@@ -382,6 +382,7 @@ export default CombinedInteraction;
 | `onTranscriptUpdate`    | `(transcriptData: TranscriptResponse) => void`           | No       | Called with live transcription results (interim & final).                                                 |
 | `onAgentStateChange`    | `(state: AgentState) => void`                            | No       | Called when the agent's state changes.                                                                    |
 | `onAgentUtterance`      | `(utterance: LLMResponse) => void`                       | No       | Called when the agent produces a text response.                                                           |
+| `onUserMessage`         | `(message: UserMessageResponse) => void`                 | No       | Called when a user message is received from the server (`role:user`).                                     |
 | `onUserStartedSpeaking` | `() => void`                                             | No       | Called when user speech starts (VAD).                                                                     |
 | `onUserStoppedSpeaking` | `() => void`                                             | No       | Called when user speech stops (VAD).                                                                      |
 | `onPlaybackStateChange` | `(isPlaying: boolean) => void`                           | No       | Called when agent audio playback starts or stops.                                                         |
@@ -406,6 +407,7 @@ These methods are accessed via the `ref` attached to the component (e.g., `deepg
 | `sleep`                   | `none`                               | `void`          | Puts the agent into sleep mode (ignores audio input). Only works in agent or dual mode. |
 | `wake`                    | `none`                               | `void`          | Wakes the agent from sleep mode. Only works in agent or dual mode. |
 | `toggleSleep`             | `none`                               | `void`          | Toggles the agent between active and sleep states. Only works in agent or dual mode. |
+| `injectAgentMessage`      | `message: string`                    | `void`          | Sends a message directly to the agent. Only works in agent or dual mode.    |
 
 ## Advanced Configuration
 
