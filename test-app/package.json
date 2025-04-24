@@ -10,7 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "deepgram-voice-interaction-react": "file:../deepgram-voice-interaction-react-0.1.0.tgz",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

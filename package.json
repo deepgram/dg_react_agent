@@ -1,5 +1,5 @@
 {
-  "name": "deepgram-react",
+  "name": "deepgram-voice-interaction-react",
   "version": "0.1.0",
   "description": "A React component for real-time transcription and voice agent interactions using Deepgram APIs",
   "main": "dist/index.js",
