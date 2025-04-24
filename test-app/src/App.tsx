@@ -31,7 +31,7 @@ function App() {
   
   // Memoize options objects to prevent unnecessary re-renders/effect loops
   const memoizedTranscriptionOptions = useMemo(() => ({
-    // Switch model to nova-3 to enable keyterm prompting
+    // Nova-3 enables keyterm prompting
     model: 'nova-3', 
     language: 'en-US',
     smart_format: true,
@@ -49,19 +49,26 @@ function App() {
 
   const memoizedAgentOptions = useMemo(() => ({
     language: 'en',
-    // Agent can still use nova-2 for listening if desired, 
+    // Agent can use a different model for listening if desired, 
     // keyterms only affect the transcription service input.
-    listenModel: 'nova-2', 
+    listenModel: 'nova-3', 
     thinkProviderType: 'open_ai',
+    // Default model is `gpt-4o-mini` but other models can be provided such as `gpt-4.1-mini`
     thinkModel: 'gpt-4o-mini',
+    // Uncomment the following lines to use custom endpoint URL and API key values for the Voice Agent `think` message
+    //thinkEndpointUrl: 'https://api.openai.com/v1/chat/completions',
+    //thinkApiKey: import.meta.env.VITE_THINK_API_KEY || '',
     voice: 'aura-2-apollo-en',
     instructions: 'You are a helpful voice assistant. Keep your responses concise and informative.',
-    greeting: 'Hello! How can I assist you today?'
+    greeting: 'Hello! How can I assist you today?',
   }), []); // Empty dependency array means this object is created only once
-  
-  // Memoize endpoint config to prevent unnecessary WebSocket reconnections
 
-  
+  // Memoize endpoint config to point to custom endpoint URLs
+  const memoizedEndpointConfig = useMemo(() => ({
+    transcriptionUrl: 'wss://api.deepgram.com/v1/listen',
+    agentUrl: 'wss://agent.deepgram.com/v1/agent/converse',
+  }), []);
+
   // Helper to add logs - memoized
   const addLog = useCallback((message: string) => {
     setLogs(prev => [...prev, `${new Date().toISOString().substring(11, 19)} - ${message}`]);
@@ -252,6 +259,7 @@ function App() {
         apiKey={import.meta.env.VITE_DEEPGRAM_API_KEY || ''}
         transcriptionOptions={memoizedTranscriptionOptions}
         agentOptions={memoizedAgentOptions}
+        endpointConfig={memoizedEndpointConfig}
         onReady={handleReady}
         onTranscriptUpdate={handleTranscriptUpdate}
         onAgentUtterance={handleAgentUtterance}
