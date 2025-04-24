@@ -486,7 +486,15 @@ function DeepgramVoiceInteraction(
             type: agentOptions.thinkProviderType || 'open_ai',
             model: agentOptions.thinkModel || 'gpt-4o-mini'
           },
-          prompt: agentOptions.instructions || 'You are a helpful voice assistant.'
+          prompt: agentOptions.instructions || 'You are a helpful voice assistant.',
+          ...(agentOptions.thinkEndpointUrl && agentOptions.thinkApiKey ? {
+            endpoint: {
+              url: agentOptions.thinkEndpointUrl,
+              headers: {
+                authorization: `bearer ${agentOptions.thinkApiKey}`,
+              },
+            }
+          } : {})
         },
         speak: {
           provider: {
