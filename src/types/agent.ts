@@ -322,6 +322,8 @@ export interface AgentOptions {
   // Think settings
   thinkProviderType?: string; // e.g., "open_ai", "anthropic", etc.
   thinkModel?: string;   // e.g., "gpt-4-turbo", "claude-3-sonnet"
+  thinkEndpointUrl?: string; // e.g., 'https://api.openai.com/v1/chat/completions'
+  thinkApiKey?: string; // e.g., think LLM provider API key
   thinkTemperature?: number; // e.g., 0.7
   instructions?: string; // Base instructions for the agent
   

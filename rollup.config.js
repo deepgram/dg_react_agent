@@ -5,7 +5,9 @@ import { terser } from 'rollup-plugin-terser';
 import peerDepsExternal from 'rollup-plugin-peer-deps-external';
 import cleaner from 'rollup-plugin-cleaner';
 import url from '@rollup/plugin-url';
-import packageJson from './package.json' assert { type: 'json' };
+//import packageJson from './package.json' assert { type: 'json' };
+import { readFileSync } from 'fs';
+const packageJson = JSON.parse(readFileSync('./package.json', 'utf8'));
 
 export default {
   input: 'src/index.ts',
