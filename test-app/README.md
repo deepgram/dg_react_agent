@@ -8,7 +8,9 @@ This is a simple demonstration app for the Deepgram Voice Interaction React comp
 2. Install dependencies: `npm install`
 3. Create a `.env` file in the root of this directory with your Deepgram API key:
    ```
-   VITE_DEEPGRAM_API_KEY=your_api_key_here
+   VITE_DEEPGRAM_API_KEY=your_deepgram_api_key_here
+   # optional LLM provider key e.g. OpenAI API key
+   # VITE_THINK_API_KEY=your_think_api_key_here
    ```
 4. Start the development server: `npm run dev`
 
@@ -88,6 +90,8 @@ const agentOptions = useMemo(() => ({
   instructions: 'You are a helpful assistant...',
   voice: 'aura-asteria-en',
   thinkModel: 'gpt-4o-mini',
+  thinkApiKey: import.meta.env.VITE_THINK_API_KEY || '',
+  thinkEndpointUrl: thinkEndpointUrl: 'https://api.openai.com/v1/chat/completions',
 }), []);
 ```
 
