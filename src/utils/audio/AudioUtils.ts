@@ -1,3 +1,5 @@
+import { AudioProcessingOptions } from '../../types/common/audio';
+
 /**
  * Audio processing utilities for smooth real-time audio playback
  */
@@ -6,17 +8,16 @@
  * Creates an AudioBuffer from raw Linear16 PCM data
  * @param audioContext The Web Audio API AudioContext
  * @param data ArrayBuffer containing Linear16 PCM audio data
- * @param sampleRate Sample rate of the audio data (default: 24000Hz)
+ * @param sampleRate Sample rate of the audio data (default: 48000Hz)
  * @returns AudioBuffer ready for playback
  */
 export function createAudioBuffer(
   audioContext: AudioContext, 
   data: ArrayBuffer, 
-  sampleRate: number = 24000
+  sampleRate: number = 48000
 ): AudioBuffer | undefined {
   const audioDataView = new Int16Array(data);
   if (audioDataView.length === 0) {
-    console.error("Received audio data is empty.");
     return undefined;
   }
 
@@ -67,74 +68,123 @@ export function playAudioBuffer(
 }
 
 /**
- * Downsamples audio data from one sample rate to another
- * @param buffer Float32Array of audio samples
- * @param fromSampleRate Original sample rate
- * @param toSampleRate Target sample rate
- * @returns Downsampled Float32Array
+ * Creates a WAV header for Edge browser compatibility
+ * Some browsers require proper audio container headers
  */
-export function downsample(
-  buffer: Float32Array, 
-  fromSampleRate: number, 
-  toSampleRate: number
-): Float32Array {
-  if (fromSampleRate === toSampleRate) {
-    return buffer;
-  }
-  
-  const sampleRateRatio = fromSampleRate / toSampleRate;
-  const newLength = Math.round(buffer.length / sampleRateRatio);
-  const result = new Float32Array(newLength);
-  let offsetResult = 0;
-  let offsetBuffer = 0;
-  
-  while (offsetResult < result.length) {
-    const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
-    let accum = 0, count = 0;
-    
-    for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
-      accum += buffer[i];
-      count++;
-    }
-    
-    result[offsetResult] = accum / count;
-    offsetResult++;
-    offsetBuffer = nextOffsetBuffer;
-  }
-  
-  return result;
+export function createWAVHeader(
+  sampleRate: number = 48000,
+  channels: number = 1,
+  bitsPerSample: number = 16
+): Uint8Array {
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
+
+  // RIFF header
+  view.setUint32(0, 0x52494646, false); // "RIFF"
+  view.setUint32(4, 0, true); // File size placeholder
+  view.setUint32(8, 0x57415645, false); // "WAVE"
+
+  // fmt chunk
+  view.setUint32(12, 0x666d7420, false); // "fmt "
+  view.setUint32(16, 16, true); // Chunk size
+  view.setUint16(20, 1, true); // Audio format (PCM)
+  view.setUint16(22, channels, true); // Number of channels
+  view.setUint32(24, sampleRate, true); // Sample rate
+  view.setUint32(28, sampleRate * channels * (bitsPerSample / 8), true); // Byte rate
+  view.setUint16(32, channels * (bitsPerSample / 8), true); // Block align
+  view.setUint16(34, bitsPerSample, true); // Bits per sample
+
+  // data chunk
+  view.setUint32(36, 0x64617461, false); // "data"
+  view.setUint32(40, 0, true); // Data size placeholder
+
+  return new Uint8Array(header);
 }
 
 /**
- * Converts Float32Array audio data to Int16Array format
- * @param buffer Float32Array of audio samples
- * @returns ArrayBuffer containing Int16 audio data
+ * Detects browser type for compatibility optimizations
  */
-export function convertFloat32ToInt16(buffer: Float32Array): ArrayBuffer {
-  let l = buffer.length;
-  const buf = new Int16Array(l);
+export function getBrowserInfo(): {
+  isEdge: boolean;
+  isChrome: boolean;
+  isSafari: boolean;
+  isFirefox: boolean;
+} {
+  const userAgent = navigator.userAgent;
   
-  while (l--) {
-    buf[l] = Math.min(1, buffer[l]) * 0x7fff;
-  }
-  
-  return buf.buffer;
+  return {
+    isEdge: /Edge|Edg/.test(userAgent),
+    isChrome: /Chrome/.test(userAgent) && !/Edge|Edg/.test(userAgent),
+    isSafari: /Safari/.test(userAgent) && !/Chrome/.test(userAgent),
+    isFirefox: /Firefox/.test(userAgent)
+  };
 }
 
 /**
- * Normalizes audio volume using frequency data from an analyzer
- * @param analyzer AudioAnalyser node
- * @param dataArray Uint8Array to store analyzer data
- * @param normalizationFactor Factor to normalize against (higher = quieter)
- * @returns Normalized volume level between 0-1
+ * Gets browser-optimized audio configuration
  */
-export function normalizeVolume(
-  analyzer: AnalyserNode, 
-  dataArray: Uint8Array, 
-  normalizationFactor: number
-): number {
-  analyzer.getByteFrequencyData(dataArray);
-  const sum = dataArray.reduce((acc, val) => acc + val, 0);
-  const average = sum / dataArray.length;
-  return Math.min(average / normalizationFactor, 1);
+export function getBrowserOptimizedConfig(): AudioProcessingOptions & {
+  bufferSize: number;
+  latencyHint: AudioContextLatencyCategory;
+} {
+  const browser = getBrowserInfo();
+  
+  if (browser.isEdge) {
+    // Edge needs more conservative settings
+    return {
+      sampleRate: 48000,
+      channels: 1,
+      encoding: 'linear16',
+      bufferSize: 8192,
+      latencyHint: 'balanced'
+    };
+  }
+  
+  // Chrome and other browsers can handle more aggressive low-latency settings
+  return {
+    sampleRate: 48000,
+    channels: 1,
+    encoding: 'linear16',
+    bufferSize: 4096,
+    latencyHint: 'interactive'
+  };
+}
+
+/**
+ * Creates an optimized AudioContext for TTS playback
+ */
+export function createOptimizedAudioContext(): AudioContext {
+  const config = getBrowserOptimizedConfig();
+  
+  return new (window.AudioContext || (window as any).webkitAudioContext)({
+    sampleRate: config.sampleRate,
+    latencyHint: config.latencyHint
+  });
+}
+
+/**
+ * Validates that required Web Audio API features are available
+ */
+export function validateWebAudioSupport(): {
+  supported: boolean;
+  missingFeatures: string[];
+} {
+  const missingFeatures: string[] = [];
+  
+  if (!window.AudioContext && !(window as any).webkitAudioContext) {
+    missingFeatures.push('AudioContext');
+  }
+  
+  if (!window.WebSocket) {
+    missingFeatures.push('WebSocket');
+  }
+  
+  if (!window.performance || !window.performance.now) {
+    missingFeatures.push('Performance API');
+  }
+  
+  return {
+    supported: missingFeatures.length === 0,
+    missingFeatures
+  };
 } 

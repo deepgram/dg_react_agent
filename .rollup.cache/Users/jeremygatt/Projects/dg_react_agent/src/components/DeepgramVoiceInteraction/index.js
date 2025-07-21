@@ -1,0 +1,9 @@
+// Core Component
+export { default as DeepgramVoiceInteraction } from './core';
+// Framework Adapters
+export { DeepgramWrapper } from './adapters/next';
+// Wrappers
+export { DeepgramErrorBoundary } from './wrappers/ErrorBoundary';
+// Types
+export * from '../../types';
+//# sourceMappingURL=index.js.map

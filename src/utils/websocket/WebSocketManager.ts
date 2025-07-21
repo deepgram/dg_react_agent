@@ -1,416 +1,242 @@
-import { ConnectionState, DeepgramError, ServiceType } from '../../types';
+import { ConnectionState, WebSocketManagerOptions, WebSocketEventHandlers } from '../../types/common/connection';
+import { ConnectionError } from '../../types/common/error';
 
-/**
- * Event types emitted by the WebSocketManager
- */
-export type WebSocketEvent = 
-  | { type: 'state'; state: ConnectionState }
-  | { type: 'message'; data: any }
-  | { type: 'binary'; data: ArrayBuffer }
-  | { type: 'error'; error: DeepgramError };
+// Global instance counter for debugging
+let instanceCounter = 0;
 
-/**
- * Options for the WebSocketManager
- */
-export interface WebSocketManagerOptions {
-  /** 
-   * URL to connect to 
-   */
-  url: string;
-  
-  /** 
-   * API key for authentication 
-   */
-  apiKey: string;
-  
-  /** 
-   * Service type (for error reporting)
-   */
-  service: ServiceType;
-  
-  /**
-   * Additional query parameters to add to the connection URL
-   */
-  queryParams?: Record<string, string | boolean | number>;
-  
-  /**
-   * How often to send keepalive messages (in ms)
-   */
-  keepaliveInterval?: number;
-  
-  /**
-   * Maximum time to wait for a connection before timing out (in ms)
-   */
-  connectionTimeout?: number;
-  
-  /**
-   * Enable verbose logging
-   */
-  debug?: boolean;
+interface WebSocketEvent {
+  type: 'state' | 'message' | 'binary' | 'error';
+  state?: ConnectionState;
+  data?: any;
+  error?: ConnectionError;
 }
 
-/**
- * Default WebSocketManager options
- */
-const DEFAULT_OPTIONS: Partial<WebSocketManagerOptions> = {
-  keepaliveInterval: 10000, // 10 seconds
-  connectionTimeout: 10000, // 10 seconds
-  debug: false,
-};
+type WebSocketEventListener = (event: WebSocketEvent) => void;
 
-/**
- * Manages a WebSocket connection to Deepgram API endpoints
- */
 export class WebSocketManager {
-  private ws: WebSocket | null = null;
-  private options: WebSocketManagerOptions;
-  private eventListeners: Array<(event: WebSocketEvent) => void> = [];
-  private keepaliveIntervalId: number | null = null;
-  private connectionTimeoutId: number | null = null;
-  private connectionState: ConnectionState = 'closed';
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectDelay = 1000; // Start with 1 second
+  protected ws: WebSocket | null = null;
+  protected connectionState: ConnectionState = 'disconnected';
+  protected reconnectAttempts = 0;
+  protected reconnectTimer: number | null = null;
+  protected isManualClose = false;
+  protected instanceId: number;
+  protected eventListeners: Set<WebSocketEventListener> = new Set();
 
-  /**
-   * Creates a new WebSocketManager
-   */
-  constructor(options: WebSocketManagerOptions) {
-    this.options = { ...DEFAULT_OPTIONS, ...options };
-    this.log('WebSocketManager created');
+  constructor(
+    protected options: WebSocketManagerOptions,
+    protected handlers: WebSocketEventHandlers = {}
+  ) {
+    this.instanceId = ++instanceCounter;
+    this.log(`🏗️ WebSocketManager #${this.instanceId} created`);
   }
 
-  /**
-   * Logs a message if debug is enabled
-   */
-  private log(...args: any[]): void {
+  protected log(message: string, data?: any): void {
     if (this.options.debug) {
-      console.log(`[WebSocketManager:${this.options.service}]`, ...args);
+      console.log(`[WebSocketManager] ${message}`, data || '');
     }
   }
 
-  /**
-   * Builds the WebSocket URL with query parameters
-   */
-  private buildUrl(): string {
-    const url = new URL(this.options.url);
-    
-    // Add query parameters if provided
-    if (this.options.queryParams) {
-      // Format Deepgram specific parameters
-      Object.entries(this.options.queryParams).forEach(([key, value]) => {
-        // Handle boolean values specially for Deepgram API
-        if (typeof value === 'boolean') {
-          if (value === true) {
-            url.searchParams.append(key, 'true');
+  protected updateConnectionState(newState: ConnectionState): void {
+    if (this.connectionState !== newState) {
+      this.log(`🔄 Connection state: ${this.connectionState} → ${newState}`);
+      this.connectionState = newState;
+      this.handlers.onConnectionStateChange?.(newState);
+      this.notifyListeners({ type: 'state', state: newState });
+    }
+  }
+
+  protected createConnection(): void {
+    try {
+      this.log('🔌 Creating new WebSocket connection...');
+      this.updateConnectionState('connecting');
+      
+      const url = this.buildWebSocketURL();
+      
+      this.log('🔑 Using subprotocol authentication with API key');
+      this.log('🔗 Full URL:', url);
+      this.log('🔑 API Key:', this.options.apiKey.substring(0, 10) + '...');
+      
+      this.ws = new WebSocket(url, ['token', this.options.apiKey]);
+      this.log('📡 WebSocket readyState after creation:', this.ws.readyState);
+      
+      this.setupEventHandlers();
+      
+    } catch (error) {
+      this.handleConnectionError(error as Error);
+    }
+  }
+
+  protected setupEventHandlers(): void {
+    if (!this.ws) return;
+
+    this.ws.onopen = () => {
+      this.log('✅ WebSocket opened successfully');
+      this.updateConnectionState('connected');
+      this.reconnectAttempts = 0;
+      this.handlers.onOpen?.();
+    };
+
+    this.ws.onmessage = (event: MessageEvent) => {
+      try {
+        if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
+          if (event.data instanceof Blob) {
+            event.data.arrayBuffer().then(buffer => {
+              this.handlers.onMessage?.(buffer);
+              this.notifyListeners({ type: 'binary', data: buffer });
+            });
+          } else {
+            this.handlers.onMessage?.(event.data);
+            this.notifyListeners({ type: 'binary', data: event.data });
           }
-          // Skip false values as they should be omitted rather than set to 'false'
-        } else {
-          url.searchParams.append(key, String(value));
+        } else if (typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          this.handlers.onMessage?.(data);
+          this.notifyListeners({ type: 'message', data });
         }
-      });
-    }
-    
-    this.log('Built URL with params:', url.toString());
-    return url.toString();
-  }
+      } catch (error) {
+        this.handleMessageError(error as Error);
+      }
+    };
 
-  /**
-   * Adds an event listener
-   */
-  public addEventListener(listener: (event: WebSocketEvent) => void): () => void {
-    this.eventListeners.push(listener);
-    return () => {
-      this.eventListeners = this.eventListeners.filter(l => l !== listener);
+    this.ws.onclose = (event: CloseEvent) => {
+      this.log(`🔴 WebSocket closed - Code: ${event.code}, Reason: ${event.reason || 'No reason'}`);
+      this.updateConnectionState('disconnected');
+      this.ws = null;
+      
+      this.handlers.onClose?.();
+
+      if (!this.isManualClose && this.shouldReconnect()) {
+        this.scheduleReconnect();
+      }
+    };
+
+    this.ws.onerror = () => {
+      this.handleConnectionError(new Error('WebSocket connection error'));
     };
   }
 
-  /**
-   * Emits an event to all listeners
-   */
-  private emit(event: WebSocketEvent): void {
-    this.eventListeners.forEach(listener => {
-      try {
-        listener(event);
-      } catch (error) {
-        console.error('Error in WebSocketManager event listener:', error);
-      }
-    });
+  protected handleConnectionError(error: Error): void {
+    this.log('🚨 Connection error:', error);
+    this.updateConnectionState('error');
+    
+    const connectionError: ConnectionError = {
+      name: 'ConnectionError',
+      message: error.message,
+      type: 'connection',
+      code: 'WEBSOCKET_ERROR',
+      details: { originalError: error }
+    };
+
+    this.handlers.onError?.(connectionError);
+    this.notifyListeners({ type: 'error', error: connectionError });
+    
+    if (this.shouldReconnect()) {
+      this.scheduleReconnect();
+    }
   }
 
-  /**
-   * Updates the connection state and emits a state event
-   */
-  private updateState(state: ConnectionState): void {
-    this.connectionState = state;
-    this.emit({ type: 'state', state });
+  protected handleMessageError(error: Error): void {
+    const messageError: ConnectionError = {
+      name: 'MessageError',
+      message: `Failed to parse WebSocket message: ${error.message}`,
+      type: 'connection',
+      code: 'MESSAGE_PARSE_ERROR',
+      details: { originalError: error }
+    };
+
+    this.handlers.onError?.(messageError);
+    this.notifyListeners({ type: 'error', error: messageError });
   }
 
-  /**
-   * Connects to the WebSocket
-   */
-  public connect(): Promise<void> {
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
-      this.log('WebSocket already connected or connecting');
-      return Promise.resolve();
+  protected shouldReconnect(): boolean {
+    const maxAttempts = this.options.maxReconnectAttempts ?? 3;
+    return this.reconnectAttempts < maxAttempts;
+  }
+
+  protected scheduleReconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
     }
 
-    this.log('Connecting to WebSocket...');
-    this.updateState('connecting');
-
-    return new Promise((resolve, reject) => {
-      try {
-        const url = this.buildUrl();
-        this.log(`Connecting to ${url}`);
-        
-        // Create WebSocket with token protocol
-        this.ws = new WebSocket(url, ['token', this.options.apiKey]);
-        
-        // Log socket readyState
-        this.log('Initial readyState:', this.ws.readyState);
-        
-        // Set connection timeout
-        this.connectionTimeoutId = window.setTimeout(() => {
-          if (this.connectionState === 'connecting') {
-            const error: DeepgramError = {
-              service: this.options.service,
-              code: 'connection_timeout',
-              message: 'Connection timed out',
-            };
-            this.log('Connection timeout reached');
-            this.emit({ type: 'error', error });
-            this.updateState('error');
-            this.close();
-            reject(new Error('Connection timed out'));
-          }
-        }, this.options.connectionTimeout);
-
-        // Set up event handlers
-        this.ws.onopen = () => {
-          this.log('WebSocket connected');
-          window.clearTimeout(this.connectionTimeoutId!);
-          this.connectionTimeoutId = null;
-          this.updateState('connected');
-          this.startKeepalive();
-          this.reconnectAttempts = 0;
-          resolve();
-        };
-
-        this.ws.onmessage = (event) => {
-          // Log the type of data received for every message
-          this.log(`Received message data type: ${typeof event.data}, is ArrayBuffer: ${event.data instanceof ArrayBuffer}, is Blob: ${event.data instanceof Blob}`);
-          
-          if (typeof event.data === 'string') {
-            try {
-              this.log('Received raw string message:', event.data);
-              const data = JSON.parse(event.data);
-              this.log('Parsed message into JSON:', data);
-              this.emit({ type: 'message', data });
-            } catch (error) {
-              this.log('Error parsing message:', error);
-              this.emit({ 
-                type: 'error', 
-                error: {
-                  service: this.options.service,
-                  code: 'parse_error',
-                  message: 'Failed to parse WebSocket message',
-                  details: error,
-                }
-              });
-            }
-          } else if (event.data instanceof ArrayBuffer) {
-            this.log('Received ArrayBuffer binary data, emitting binary event...');
-            this.emit({ type: 'binary', data: event.data });
-          } else if (event.data instanceof Blob) {
-            // Handle Blob data by converting to ArrayBuffer
-            this.log(`Received Blob binary data (size: ${event.data.size}), converting to ArrayBuffer...`);
-            
-            // Convert Blob to ArrayBuffer
-            event.data.arrayBuffer().then(arrayBuffer => {
-              this.log(`Converted Blob to ArrayBuffer (byteLength: ${arrayBuffer.byteLength}), emitting binary event...`);
-              this.emit({ type: 'binary', data: arrayBuffer });
-            }).catch(error => {
-              this.log('Error converting Blob to ArrayBuffer:', error);
-              this.emit({
-                type: 'error',
-                error: {
-                  service: this.options.service,
-                  code: 'blob_conversion_error',
-                  message: 'Failed to convert Blob to ArrayBuffer',
-                  details: error,
-                }
-              });
-            });
-          } else {
-            // Log if data is neither string, ArrayBuffer, nor Blob
-            this.log('Received message data of unexpected type:', event.data);
-          }
-        };
-
-        this.ws.onerror = (error) => {
-          this.log('WebSocket error:', error);
-          this.emit({ 
-            type: 'error', 
-            error: {
-              service: this.options.service,
-              code: 'websocket_error',
-              message: 'WebSocket connection error',
-              details: error,
-            }
-          });
-          this.updateState('error');
-          reject(error);
-        };
-
-        this.ws.onclose = (event) => {
-          this.log(`WebSocket closed: code=${event.code}, reason='${event.reason}', wasClean=${event.wasClean}`);
-          this.stopKeepalive();
-          window.clearTimeout(this.connectionTimeoutId!);
-          this.connectionTimeoutId = null;
-          this.updateState('closed');
-          
-          // Only attempt to reconnect if we were previously connected
-          if (this.connectionState === 'connected' && this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.attemptReconnect();
-          }
-        };
-      } catch (error) {
-        this.log('Failed to create WebSocket:', error);
-        this.updateState('error');
-        reject(error);
-      }
-    });
-  }
-
-  /**
-   * Attempt to reconnect with exponential backoff
-   */
-  private attemptReconnect(): void {
-    this.reconnectAttempts++;
-    const delay = Math.min(30000, this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1));
+    const baseDelay = this.options.reconnectDelay ?? 1000;
+    const delay = baseDelay * Math.pow(2, this.reconnectAttempts);
     
-    this.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-    
-    setTimeout(() => {
-      this.connect().catch(error => {
-        this.log('Reconnection failed:', error);
-      });
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectAttempts++;
+      this.createConnection();
     }, delay);
   }
 
-  /**
-   * Starts the keepalive interval
-   */
-  private startKeepalive(): void {
-    if (this.keepaliveIntervalId !== null) {
-      this.stopKeepalive();
+  public connect(): void {
+    if (this.connectionState === 'connected' || this.connectionState === 'connecting') {
+      return;
     }
+
+    this.isManualClose = false;
+    this.createConnection();
+  }
+
+  public disconnect(): void {
+    this.isManualClose = true;
     
-    this.keepaliveIntervalId = window.setInterval(() => {
-      this.sendKeepalive();
-    }, this.options.keepaliveInterval);
-
-    this.log('Started keepalive interval');
-  }
-
-  /**
-   * Stops the keepalive interval
-   */
-  private stopKeepalive(): void {
-    if (this.keepaliveIntervalId !== null) {
-      window.clearInterval(this.keepaliveIntervalId);
-      this.keepaliveIntervalId = null;
-      this.log('Stopped keepalive interval');
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
-  }
 
-  /**
-   * Sends a keepalive message
-   */
-  private sendKeepalive(): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.log('Sending keepalive');
-      try {
-        this.ws.send(JSON.stringify({ type: 'KeepAlive' }));
-      } catch (error) {
-        this.log('Error sending keepalive:', error);
-      }
-    }
-  }
-
-  /**
-   * Sends a JSON message over the WebSocket
-   */
-  public sendJSON(data: any): boolean {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.log('Cannot send message, WebSocket not open');
-      return false;
-    }
-    
-    try {
-      this.log('Sending JSON:', data);
-      this.ws.send(JSON.stringify(data));
-      return true;
-    } catch (error) {
-      this.log('Error sending JSON:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Sends binary data over the WebSocket
-   */
-  public sendBinary(data: ArrayBuffer | Blob): boolean {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.log('Cannot send binary data, WebSocket not open');
-      return false;
-    }
-    
-    try {
-      this.log(`Sending binary data: ${data instanceof ArrayBuffer ? data.byteLength : data.size} bytes`);
-      this.ws.send(data);
-      return true;
-    } catch (error) {
-      this.log('Error sending binary data:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Sends a CloseStream message to finalize transcription
-   */
-  public sendCloseStream(): boolean {
-    return this.sendJSON({ type: 'CloseStream' });
-  }
-
-  /**
-   * Closes the WebSocket connection
-   */
-  public close(): void {
-    this.log('Closing WebSocket');
-    this.stopKeepalive();
-    
-    if (this.connectionTimeoutId !== null) {
-      window.clearTimeout(this.connectionTimeoutId);
-      this.connectionTimeoutId = null;
-    }
-    
     if (this.ws) {
-      try {
-        this.ws.close(1000, 'Closed by client');
-      } catch (error) {
-        this.log('Error closing WebSocket:', error);
-      }
-      this.ws = null;
+      this.ws.close(1000, 'Manual disconnect');
     }
-    
-    this.updateState('closed');
   }
 
-  /**
-   * Gets the current connection state
-   */
+  public sendMessage(message: any): void {
+    if (this.connectionState !== 'connected' || !this.ws) {
+      throw new Error('WebSocket is not connected');
+    }
+
+    try {
+      const jsonMessage = JSON.stringify(message);
+      this.ws.send(jsonMessage);
+    } catch (error) {
+      this.handleConnectionError(error as Error);
+    }
+  }
+
+  public sendBinary(data: ArrayBuffer): void {
+    if (this.connectionState !== 'connected' || !this.ws) {
+      throw new Error('WebSocket is not connected');
+    }
+
+    try {
+      this.ws.send(data);
+    } catch (error) {
+      this.handleConnectionError(error as Error);
+    }
+  }
+
   public getState(): ConnectionState {
     return this.connectionState;
+  }
+
+  public isConnected(): boolean {
+    return this.connectionState === 'connected';
+  }
+
+  public cleanup(): void {
+    this.disconnect();
+    this.eventListeners.clear();
+  }
+
+  protected buildWebSocketURL(): string {
+    return this.options.url;
+  }
+
+  public addEventListener(listener: WebSocketEventListener): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
+  }
+
+  protected notifyListeners(event: WebSocketEvent): void {
+    Array.from(this.eventListeners).forEach(listener => listener(event));
   }
 } 

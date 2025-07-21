@@ -1,7 +1,7 @@
 /**
  * AudioWorkletProcessor for microphone capture and processing
  * 
- * This processor captures audio from the microphone, resamples it to 16kHz,
+ * This processor captures audio from the microphone, resamples it to 48kHz,
  * and converts it to Linear PCM format for sending to Deepgram.
  */
 class MicrophoneProcessor extends AudioWorkletProcessor {
@@ -10,7 +10,7 @@ class MicrophoneProcessor extends AudioWorkletProcessor {
     
     // State
     this.isRecording = false;
-    this.sampleRate = 16000; // Target sample rate
+    this.sampleRate = 48000; // Target sample rate
     this.bufferSize = 4096;  // Buffer size in samples
     this.buffer = new Float32Array(this.bufferSize);
     this.bufferIndex = 0;
