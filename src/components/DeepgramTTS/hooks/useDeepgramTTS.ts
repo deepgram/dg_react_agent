@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { TTSMetrics, TTSError, DebugLevel } from '../../../types/tts';
 import { ConnectionState } from '../../../types/common/connection';
-import { WebSocketManager } from '../../../utils/websocket/WebSocketManager';
+import { BaseWebSocketManager } from '../../../utils/shared/BaseWebSocketManager';
 import { MessageHandler } from '../../../utils/tts/messageHandler';
 import { ProtocolHandler } from '../../../utils/tts/protocolHandler';
-import { AudioManager } from '../../../utils/audio/AudioManager';
+import { AudioOutputManager } from '../../../utils/audio/AudioOutputManager';
 import { MetricsCollector } from '../../../utils/tts/metricsCollector';
 import { TTSWebSocketManager } from '../../../utils/websocket/TTSWebSocketManager';
 import {
@@ -72,10 +72,10 @@ export function useDeepgramTTS(
   const isCleaningUpRef = useRef(false);
 
   // Refs for managers (prevent recreating on every render)
-  const websocketManagerRef = useRef<WebSocketManager | null>(null);
+  const websocketManagerRef = useRef<BaseWebSocketManager | null>(null);
   const messageHandlerRef = useRef<MessageHandler | null>(null);
   const protocolHandlerRef = useRef<ProtocolHandler | null>(null);
-  const audioManagerRef = useRef<AudioManager | null>(null);
+  const audioManagerRef = useRef<AudioOutputManager | null>(null);
   const metricsCollectorRef = useRef<MetricsCollector | null>(null);
 
   // Smart debug level processing
@@ -246,9 +246,8 @@ export function useDeepgramTTS(
   // Initialize message handler
   const initializeMessageHandler = useCallback(() => {
     messageHandlerRef.current = new MessageHandler({
-      debug: memoizedOptions.debugConfig.managerDebug
-    }, {
-      onAudioData: (chunk) => {
+      debug: memoizedOptions.debugConfig.managerDebug,
+      onAudioChunk: (chunk) => {
         log(`📦 Audio chunk received: ${chunk.data.byteLength} bytes`, 'verbose');
 
         if (metricsCollectorRef.current) {
@@ -258,15 +257,8 @@ export function useDeepgramTTS(
 
         audioManagerRef.current?.queueAudio(chunk.data);
       },
-      onMetadata: (metadata) => {
-        log('📋 Metadata received', 'hook');
-        log(`📋 Metadata details: ${JSON.stringify(metadata)}`, 'verbose');
-      },
-      onFlushed: () => {
-        log('✅ Audio stream flushed', 'verbose');
-      },
-      onCleared: () => {
-        log('🧹 Audio queue cleared', 'verbose');
+      onComplete: () => {
+        log('✅ Audio stream complete', 'verbose');
       },
       onError: (error) => {
         handleOperationError(error, 'Message handler');
@@ -316,27 +308,26 @@ export function useDeepgramTTS(
 
   // Initialize audio manager
   const initializeAudio = useCallback(async () => {
-    audioManagerRef.current = new AudioManager({
+    audioManagerRef.current = new AudioOutputManager({
       debug: memoizedOptions.debugConfig.managerDebug,
-      ...config.microphoneConfig
-    });
-
-    audioManagerRef.current.addEventListener(event => {
-      if (event.type === 'ready') {
-        log('🔊 Audio system ready');
-      } else if (event.type === 'playing') {
+      enableVolumeControl: true,
+      initialVolume: 1.0
+    }, {
+      onAudioStart: () => {
         log('▶️ Audio playback started', 'verbose');
         setIsPlaying(true);
         if (metricsCollectorRef.current) {
           metricsCollectorRef.current.markFirstAudio();
         }
-      } else if (event.type === 'error' && event.error) {
-        handleOperationError(event.error, 'Audio system');
-      }
+      },
+      onAudioEnd: () => {
+        setIsPlaying(false);
+      },
+      onError: (error) => handleOperationError(error, 'Audio system')
     });
 
     await audioManagerRef.current.initialize();
-  }, [memoizedOptions.debugConfig.managerDebug, config.microphoneConfig]);
+  }, [memoizedOptions.debugConfig.managerDebug, log, handleOperationError]);
 
   // Initialize TTS system
   useEffect(() => {

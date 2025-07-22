@@ -1,112 +1,159 @@
-# Deepgram Voice Interaction Test App
+# Deepgram React Components Test App
 
-This is a simple demonstration app for the Deepgram Voice Interaction React component. It demonstrates the different operating modes of the component and allows testing its features.
+This is a comprehensive test application for the Deepgram React Components library, demonstrating various usage patterns and configurations.
 
-## Setup
+## Features Demonstrated
 
-1. Clone the repository
-2. Install dependencies: `npm install`
-3. Create a `.env` file in the root of this directory with your Deepgram API key:
+### Text-to-Speech (TTS)
+- Basic text-to-speech conversion
+- Real-time audio playback
+- Error handling
+- Performance optimization
+
+### Voice Agent
+- Interactive voice conversations
+- Real-time transcription
+- Agent state management
+- Microphone configuration
+- WebSocket connection handling
+
+## Getting Started
+
+1. **Install Dependencies**
+   ```bash
+   npm install
    ```
+
+2. **Set up Environment Variables**
+   Create a `.env` file in the test-app directory:
+   ```env
    VITE_DEEPGRAM_API_KEY=your_deepgram_api_key_here
-   # optional LLM provider key e.g. OpenAI API key
-   # VITE_THINK_API_KEY=your_think_api_key_here
    ```
-4. Start the development server: `npm run dev`
 
-## Component Modes
+3. **Start Development Server**
+   ```bash
+   npm run dev
+   ```
 
-The DeepgramVoiceInteraction component supports three operating modes, all demonstrated in this application:
+4. **Open in Browser**
+   Navigate to `http://localhost:5173`
 
-### 1. Transcription Only Mode
+## Usage Examples
 
-To use the component in transcription-only mode:
+The Deepgram Agent component supports comprehensive voice interaction capabilities, demonstrated in this application:
 
+### Basic Agent Setup
 ```tsx
-<DeepgramVoiceInteraction
-  ref={deepgramRef}
-  apiKey={apiKey}
-  transcriptionOptions={transcriptionOptions}
-  // No agentOptions prop - completely omit it, don't pass empty object
-  onReady={handleReady}
-  onTranscriptUpdate={handleTranscriptUpdate}
-  onError={handleError}
-  debug={true}
-/>
+import { useDeepgramAgent } from 'deepgram-voice-interaction-react';
+
+const { start, stop, isReady, isRecording } = useDeepgramAgent({
+  apiKey: 'YOUR_API_KEY',
+  onAgentUtterance: (response) => console.log('Agent:', response.text),
+  onUserMessage: (message) => console.log('User:', message.text)
+});
 ```
 
-### 2. Agent Only Mode
-
-To use the component in agent-only mode:
-
+### Advanced Configuration
 ```tsx
-<DeepgramVoiceInteraction
-  ref={deepgramRef}
-  apiKey={apiKey}
-  // No transcriptionOptions prop - completely omit it, don't pass empty object
-  agentOptions={agentOptions}
-  onReady={handleReady}
-  onAgentStateChange={handleAgentStateChange}
-  onAgentUtterance={handleAgentUtterance}
-  onError={handleError}
-  debug={true}
-/>
+const { start, stop, agentState } = useDeepgramAgent({
+  apiKey: 'YOUR_API_KEY',
+  agentOptions: {
+    language: 'en',
+    voice: 'aura-asteria-en',
+    instructions: 'You are a helpful assistant.',
+    greeting: 'Hello! How can I help you today?'
+  },
+  debug: true,
+  onAgentStateChange: (state) => console.log('State:', state),
+  onError: (error) => console.error('Error:', error)
+});
 ```
 
-### 3. Dual Mode (Transcription + Agent)
-
-To use the component with both transcription and agent functionality:
-
+### Custom Microphone Configuration
 ```tsx
-<DeepgramVoiceInteraction
-  ref={deepgramRef}
-  apiKey={apiKey}
-  transcriptionOptions={transcriptionOptions}
-  agentOptions={agentOptions}
-  onReady={handleReady}
-  onTranscriptUpdate={handleTranscriptUpdate}
-  onAgentStateChange={handleAgentStateChange}
-  onAgentUtterance={handleAgentUtterance}
-  onError={handleError}
-  debug={true}
-/>
+const { start, stop } = useDeepgramAgent({
+  apiKey: 'YOUR_API_KEY',
+  microphoneConfig: {
+    constraints: {
+      sampleRate: 48000,
+      channelCount: 1,
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    },
+    bufferSize: 4096
+  }
+});
 ```
 
-## Important Notes
+## Project Structure
 
-1. **Empty Objects**: Never pass empty objects (`{}`) for options you don't want to use. This will still initialize that service. Instead, completely omit the prop.
-
-2. **Configuration Options**: Use `useMemo` for your configuration objects to prevent unnecessary re-renders:
-
-```tsx
-const transcriptionOptions = useMemo(() => ({
-  model: 'nova-2',
-  language: 'en-US',
-  interim_results: true,
-  smart_format: true,
-}), []);
-
-const agentOptions = useMemo(() => ({
-  instructions: 'You are a helpful assistant...',
-  voice: 'aura-asteria-en',
-  thinkModel: 'gpt-4o-mini',
-  thinkApiKey: import.meta.env.VITE_THINK_API_KEY || '',
-  thinkEndpointUrl: thinkEndpointUrl: 'https://api.openai.com/v1/chat/completions',
-}), []);
+```
+test-app/
+├── src/
+│   ├── pages/
+│   │   ├── AgentPage.tsx      # Voice agent demonstration
+│   │   └── TTSPage.tsx        # Text-to-speech demonstration
+│   ├── App.tsx                # Main application component
+│   └── main.tsx              # Application entry point
+├── public/
+└── package.json
 ```
 
-3. **Callbacks**: Only define and pass the callbacks that are relevant to your chosen mode:
-   - For transcription: `onTranscriptUpdate`, `onUserStartedSpeaking`, `onUserStoppedSpeaking`
-   - For agent: `onAgentStateChange`, `onAgentUtterance`, `onPlaybackStateChange`
-   - Both modes: `onReady`, `onConnectionStateChange`, `onError`
+## Available Scripts
 
-## Testing Tips
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+- `npm run lint` - Run ESLint
 
-- Use the browser console to see debug logs (with `debug={true}`)
-- Test microphone access and permissions
-- Try different operating modes by modifying the component props
-- Experiment with different transcription models and agent configurations
+## Testing Different Scenarios
 
-## License
+### Error Handling
+- Test with invalid API keys
+- Test network disconnections
+- Test microphone permission denial
 
-MIT
+### Performance Testing
+- Long conversations
+- Rapid start/stop cycles
+- Multiple simultaneous connections
+
+### Browser Compatibility
+- Test across different browsers
+- Test on mobile devices
+- Test with different microphone setups
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Microphone not working**
+   - Ensure browser has microphone permissions
+   - Check microphone configuration
+   - Verify HTTPS connection (required for microphone access)
+
+2. **WebSocket connection failures**
+   - Verify API key is correct
+   - Check network connectivity
+   - Ensure firewall allows WebSocket connections
+
+3. **Audio playback issues**
+   - Check browser audio permissions
+   - Verify audio output device
+   - Test with different browsers
+
+## Contributing
+
+When adding new test cases or examples:
+
+1. Follow the existing code structure
+2. Add comprehensive error handling
+3. Include debug logging
+4. Test across different browsers
+5. Update documentation
+
+## Support
+
+For issues specific to this test app, please open an issue in the main repository.
+For Deepgram API issues, contact [Deepgram Support](https://deepgram.com/support).

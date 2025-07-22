@@ -144,3 +144,13 @@ export function isAssistantMessage(
 ): conversationMessage is AssistantMessage {
   return (conversationMessage as AssistantMessage).assistant !== undefined;
 }
+
+export interface VoiceWebSocketOptions {
+  type: 'transcription' | 'agent';
+  apiKey: string;
+  model?: string;
+  encoding?: string;
+  channels?: number;
+  sampleRate?: number;
+  debug?: boolean;
+}

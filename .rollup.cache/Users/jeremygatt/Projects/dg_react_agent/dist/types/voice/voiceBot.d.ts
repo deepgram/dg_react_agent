@@ -133,3 +133,12 @@ export declare function isUserMessage(conversationMessage: ConversationMessage):
  * Type guard for assistant messages
  */
 export declare function isAssistantMessage(conversationMessage: ConversationMessage): conversationMessage is AssistantMessage;
+export interface VoiceWebSocketOptions {
+    type: 'transcription' | 'agent';
+    apiKey: string;
+    model?: string;
+    encoding?: string;
+    channels?: number;
+    sampleRate?: number;
+    debug?: boolean;
+}

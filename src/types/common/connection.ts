@@ -1,23 +1,29 @@
-import { DeepgramError } from './error';
+import { ConnectionError } from './error';
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error' | 'closed';
 
+export interface WebSocketEvent {
+  type: 'state' | 'message' | 'binary' | 'error';
+  state?: ConnectionState;
+  data?: any;
+  error?: ConnectionError;
+}
+
+export type WebSocketEventListener = (event: WebSocketEvent) => void;
+
 export interface WebSocketManagerOptions {
-  url: string;
   apiKey: string;
-  service?: 'transcription' | 'agent';
-  queryParams?: Record<string, string | number | boolean>;
-  debug?: boolean;
+  url?: string;
   maxReconnectAttempts?: number;
   reconnectDelay?: number;
-  connectionTimeout?: number;
+  debug?: boolean;
 }
 
 export interface WebSocketEventHandlers {
   onOpen?: () => void;
-  onMessage?: (data: ArrayBuffer | any) => void;
+  onMessage?: (data: any) => void;
   onClose?: () => void;
-  onError?: (error: DeepgramError) => void;
+  onError?: (error: ConnectionError) => void;
   onConnectionStateChange?: (state: ConnectionState) => void;
 }
 

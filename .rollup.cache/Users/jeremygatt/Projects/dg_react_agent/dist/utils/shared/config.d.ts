@@ -8,8 +8,22 @@
 export declare const AUDIO_CONFIG: {
     readonly sampleRate: 48000;
     readonly encoding: "linear16";
-    readonly channels: 1;
-    readonly bufferSize: 4096;
+    readonly input: {
+        readonly channels: 1;
+        readonly bufferSize: 4096;
+        readonly constraints: {
+            readonly sampleRate: 48000;
+            readonly channelCount: 1;
+            readonly echoCancellation: true;
+            readonly noiseSuppression: true;
+            readonly autoGainControl: true;
+            readonly latency: 0;
+        };
+    };
+    readonly output: {
+        readonly channels: 1;
+        readonly bufferSize: 4096;
+    };
 };
 export declare const WEBSOCKET_CONFIG: {
     readonly reconnectDelay: 1000;
@@ -21,29 +35,38 @@ export declare const WEBSOCKET_CONFIG: {
     };
 };
 export declare const MODEL_CONFIG: {
-    readonly tts: {
-        readonly default: "aura-2-thalia-en";
-    };
     readonly transcription: {
         readonly default: "nova-2";
+        readonly alternatives: readonly ["nova", "enhanced"];
     };
     readonly agent: {
+        readonly default: "gpt-4";
+        readonly alternatives: readonly ["gpt-3.5-turbo", "claude-2"];
         readonly listen: "nova-2";
-        readonly think: "gpt-4o-mini";
-        readonly speak: "aura-2-thalia-en";
+        readonly think: "gpt-4";
+        readonly speak: "aura-2-apollo-en";
+        readonly language: "en";
+        readonly thinkProviderType: "open_ai";
+    };
+    readonly tts: {
+        readonly default: "aura-2-thalia-en";
+        readonly alternatives: readonly ["aura-2-apollo-en", "aura-2-athena-en"];
     };
 };
-export declare const DEFAULT_MICROPHONE_CONFIG: {
+export declare const AUDIO_CONTEXT_CONFIG: {
+    readonly sampleRate: 48000;
+    readonly latencyHint: "interactive";
+};
+export declare const MICROPHONE_CONFIG: {
     readonly constraints: {
         readonly sampleRate: 48000;
         readonly channelCount: 1;
         readonly echoCancellation: true;
-        readonly noiseSuppression: false;
-        readonly autoGainControl: false;
-        readonly latency: 0.01;
+        readonly noiseSuppression: true;
+        readonly autoGainControl: true;
+        readonly latency: 0;
     };
     readonly bufferSize: 4096;
-    readonly debug: false;
 };
 export declare const DEBUG_CONFIG: {
     readonly levels: readonly ["off", "hook", "manager", "verbose"];
@@ -73,7 +96,7 @@ export type ErrorCode = keyof typeof ERROR_CONFIG.errorCodes;
 export interface BaseComponentConfig {
     debug?: boolean | DebugLevel;
     enableMetrics?: boolean;
-    microphoneConfig?: Partial<typeof DEFAULT_MICROPHONE_CONFIG>;
+    microphoneConfig?: Partial<typeof MICROPHONE_CONFIG>;
     endpointOverrides?: Partial<typeof WEBSOCKET_CONFIG.endpoints>;
 }
 /**

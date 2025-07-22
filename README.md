@@ -1,122 +1,115 @@
-# Deepgram Voice Interaction React
+# Deepgram React Components
 
-A React component library for real-time transcription and voice agent interactions using Deepgram's WebSocket APIs.
+A comprehensive React component library for integrating Deepgram's voice AI capabilities into your applications.
 
 ## Features
 
-- Real-time speech-to-text transcription
-- Voice agent interactions with customizable behavior
-- Support for multiple operation modes (Transcription-only, Agent-only, or both)
-- Next.js compatibility with SSR support
-- TypeScript support
-- Comprehensive error handling
-- Extensive customization options
+- **Text-to-Speech (TTS)**: Convert text to natural-sounding speech
+- **Voice Agent**: Interactive voice conversations with AI agents
+- **Real-time Transcription**: Live speech-to-text conversion
+- **TypeScript Support**: Full type safety and IntelliSense
+- **Flexible Architecture**: Composable hooks and components
+- **Error Handling**: Comprehensive error management
+- **Performance Optimized**: Efficient resource management
 
 ## Installation
 
 ```bash
 npm install deepgram-voice-interaction-react
-# or
-yarn add deepgram-voice-interaction-react
 ```
 
 ## Quick Start
 
-### Basic Usage
+### Basic Voice Agent
 
 ```tsx
-import { DeepgramVoiceInteraction } from 'deepgram-voice-interaction-react';
+import React from 'react';
+import { useDeepgramAgent } from 'deepgram-voice-interaction-react';
 
-function App() {
+function VoiceChat() {
+  const { start, stop, isReady, isRecording } = useDeepgramAgent({
+    apiKey: 'YOUR_DEEPGRAM_API_KEY',
+    onAgentUtterance: (response) => console.log('Agent:', response.text),
+    onUserMessage: (message) => console.log('User:', message.text)
+  });
+
   return (
-    <DeepgramVoiceInteraction
-      apiKey={process.env.REACT_APP_DEEPGRAM_API_KEY}
-      transcriptionOptions={{
-        language: 'en-US',
-        model: 'nova-2',
-      }}
-    />
+    <div>
+      <button onClick={isRecording ? stop : start} disabled={!isReady}>
+        {isRecording ? 'Stop' : 'Start'} Conversation
+      </button>
+    </div>
   );
 }
 ```
 
-### Next.js Usage
+### Text-to-Speech
 
 ```tsx
-'use client';
+import React, { useState } from 'react';
+import { useDeepgramTTS } from 'deepgram-voice-interaction-react';
 
-import { DeepgramWrapper } from 'deepgram-voice-interaction-react';
+function TextToSpeech() {
+  const [text, setText] = useState('');
+  const { speak, isPlaying } = useDeepgramTTS('YOUR_DEEPGRAM_API_KEY');
 
-export default function App() {
   return (
-    <DeepgramWrapper
-      apiKey={process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY}
-      transcriptionOptions={{
-        language: 'en-US',
-        model: 'nova-2',
-      }}
-    />
+    <div>
+      <textarea 
+        value={text} 
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Enter text to speak..."
+      />
+      <button onClick={() => speak(text)} disabled={isPlaying}>
+        {isPlaying ? 'Speaking...' : 'Speak'}
+      </button>
+    </div>
   );
 }
 ```
 
-## Operation Modes
+### Advanced Agent Configuration
 
-### 1. Dual Mode (Transcription + Agent)
 ```tsx
-<DeepgramVoiceInteraction
-  apiKey={apiKey}
-  transcriptionOptions={{
-    language: 'en-US',
-    model: 'nova-2',
-  }}
-  agentOptions={{
-    language: 'en',
-    voice: 'aura-2-apollo-en',
-    instructions: 'You are a helpful voice assistant.',
-  }}
-/>
+import React from 'react';
+import { useDeepgramAgent } from 'deepgram-voice-interaction-react';
+
+function AdvancedAgent() {
+  const { start, stop, isReady, agentState } = useDeepgramAgent({
+    apiKey: 'YOUR_DEEPGRAM_API_KEY',
+    agentOptions: {
+      language: 'en',
+      voice: 'aura-asteria-en',
+      instructions: 'You are a helpful assistant specializing in customer support.',
+      greeting: 'Hello! How can I help you today?'
+    },
+    debug: true,
+    onAgentStateChange: (state) => console.log('Agent state:', state),
+    onTranscriptUpdate: (transcript) => console.log('Transcript:', transcript),
+    onError: (error) => console.error('Error:', error)
+  });
+
+  return (
+    <div>
+      <p>Agent Status: {agentState}</p>
+      <button onClick={isRecording ? stop : start} disabled={!isReady}>
+        {isRecording ? 'End Call' : 'Start Call'}
+      </button>
+    </div>
+  );
+}
 ```
 
-### 2. Transcription-Only Mode
-```tsx
-<DeepgramVoiceInteraction
-  apiKey={apiKey}
-  transcriptionOptions={{
-    language: 'en-US',
-    model: 'nova-2',
-  }}
-/>
-```
-
-### 3. Agent-Only Mode
-```tsx
-<DeepgramVoiceInteraction
-  apiKey={apiKey}
-  agentOptions={{
-    language: 'en',
-    voice: 'aura-2-apollo-en',
-    instructions: 'You are a helpful voice assistant.',
-  }}
-/>
-```
-
-## Error Handling
-
-Use the ErrorBoundary component for graceful error handling:
+### With Error Boundary
 
 ```tsx
-import { DeepgramVoiceInteraction, DeepgramErrorBoundary } from 'deepgram-voice-interaction-react';
+import React from 'react';
+import { DeepgramAgent, DeepgramErrorBoundary } from 'deepgram-voice-interaction-react';
 
 function App() {
   return (
-    <DeepgramErrorBoundary
-      fallback={<div>Something went wrong</div>}
-      onError={(error, errorInfo) => {
-        console.error('Voice interaction error:', error, errorInfo);
-      }}
-    >
-      <DeepgramVoiceInteraction apiKey={apiKey} />
+    <DeepgramErrorBoundary>
+      <DeepgramAgent apiKey={apiKey} />
     </DeepgramErrorBoundary>
   );
 }
@@ -124,60 +117,63 @@ function App() {
 
 ## API Reference
 
-### DeepgramVoiceInteraction Props
+### useDeepgramAgent
 
-| Prop | Type | Required | Description |
-|------|------|----------|-------------|
-| apiKey | string | Yes | Your Deepgram API key |
-| transcriptionOptions | TranscriptionOptions | No | Configuration for transcription service |
-| agentOptions | AgentOptions | No | Configuration for agent service |
-| endpointConfig | EndpointConfig | No | Custom endpoint URLs |
-| onReady | (isReady: boolean) => void | No | Called when component is ready |
-| onError | (error: DeepgramError) => void | No | Called when an error occurs |
-| debug | boolean | No | Enable debug logging |
+Main hook for voice agent functionality.
 
-### TranscriptionOptions
+#### Props
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| language | string | 'en-US' | Language for transcription |
-| model | string | 'nova-2' | Transcription model |
-| interim_results | boolean | true | Enable interim results |
-| smart_format | boolean | true | Enable smart formatting |
+| Prop | Type | Description |
+|------|------|-------------|
+| `apiKey` | `string` | Your Deepgram API key |
+| `agentOptions` | `AgentOptions` | Configuration for the AI agent |
+| `transcriptionOptions` | `object` | Transcription settings |
+| `microphoneConfig` | `object` | Microphone configuration |
+| `debug` | `boolean` | Enable debug logging |
+| `onReady` | `function` | Called when agent is ready |
+| `onAgentUtterance` | `function` | Called when agent speaks |
+| `onUserMessage` | `function` | Called when user speaks |
+| `onAgentStateChange` | `function` | Called when agent state changes |
+| `onTranscriptUpdate` | `function` | Called with live transcription |
+| `onError` | `function` | Called on errors |
 
-### AgentOptions
+#### Returns
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| language | string | 'en' | Agent language |
-| voice | string | 'aura-2-apollo-en' | Voice model |
-| instructions | string | - | Agent instructions |
-| greeting | string | - | Initial greeting |
+| Property | Type | Description |
+|----------|------|-------------|
+| `start` | `function` | Start the conversation |
+| `stop` | `function` | Stop the conversation |
+| `isReady` | `boolean` | Whether the agent is ready |
+| `isRecording` | `boolean` | Whether currently recording |
+| `agentState` | `AgentState` | Current agent state |
+| `error` | `Error | null` | Current error, if any |
 
-## Development
+### useDeepgramTTS
 
-```bash
-# Install dependencies
-npm install
+Hook for text-to-speech functionality.
 
-# Run development build
-npm run dev
+#### Basic Usage
 
-# Run tests
-npm test
-
-# Run tests with coverage
-npm run test:coverage
-
-# Build for production
-npm run build
-
-# Lint code
-npm run lint
-
-# Format code
-npm run format
+```tsx
+const { speak, isPlaying, stop } = useDeepgramTTS(apiKey, options);
 ```
+
+## Environment Setup
+
+Create a `.env` file in your project root:
+
+```env
+VITE_DEEPGRAM_API_KEY=your_deepgram_api_key_here
+```
+
+## Examples
+
+Check out the `test-app` directory for complete examples including:
+
+- Basic voice agent setup
+- Text-to-speech implementation  
+- Error handling patterns
+- Advanced configuration options
 
 ## Contributing
 
@@ -189,8 +185,4 @@ npm run format
 
 ## License
 
-MIT License - see the [LICENSE](LICENSE) file for details
-
-## Support
-
-For support, please contact [Deepgram Support](https://deepgram.com/support) or open an issue in this repository. 
+MIT License - see the [LICENSE](LICENSE) file for details. 

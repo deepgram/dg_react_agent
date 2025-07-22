@@ -1,20 +1,24 @@
 'use client';
-import { __assign } from "tslib";
-import React from 'react';
-import DeepgramVoiceInteraction from '../../core';
+import { useVoiceInteraction } from '../../../../hooks/useVoice/useVoiceInteraction';
 /**
- * Next.js wrapper for DeepgramVoiceInteraction
- * This component handles SSR compatibility and provides a safe loading state
+ * Next.js adapter for DeepgramVoiceInteraction
  */
-export var DeepgramWrapper = function (props) {
-    var _a = React.useState(false), isMounted = _a[0], setIsMounted = _a[1];
-    React.useEffect(function () {
-        setIsMounted(true);
-    }, []);
-    // Handle SSR
-    if (!isMounted) {
-        return null; // Or return a loading placeholder
-    }
-    return React.createElement(DeepgramVoiceInteraction, __assign({}, props));
-};
+export function DeepgramVoiceInteraction(props) {
+    var apiKey = props.apiKey, transcriptionOptions = props.transcriptionOptions, agentOptions = props.agentOptions, microphoneConfig = props.microphoneConfig, debug = props.debug, onReady = props.onReady, onTranscriptUpdate = props.onTranscriptUpdate, onAgentUtterance = props.onAgentUtterance, onUserMessage = props.onUserMessage, onAgentStateChange = props.onAgentStateChange, onError = props.onError;
+    var _a = useVoiceInteraction({
+        apiKey: apiKey,
+        transcriptionOptions: transcriptionOptions,
+        agentOptions: agentOptions,
+        microphoneConfig: microphoneConfig,
+        debug: debug,
+        onReady: onReady,
+        onTranscriptUpdate: onTranscriptUpdate,
+        onAgentUtterance: onAgentUtterance,
+        onUserMessage: onUserMessage,
+        onAgentStateChange: onAgentStateChange,
+        onError: onError
+    }), start = _a.start, stop = _a.stop, isReady = _a.isReady, isRecording = _a.isRecording, agentState = _a.agentState, error = _a.error;
+    return null; // Headless component
+}
+;
 //# sourceMappingURL=index.js.map

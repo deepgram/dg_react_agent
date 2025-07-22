@@ -1,71 +1,44 @@
+import { APIError } from '../../types/common/error';
 var MessageHandler = /** @class */ (function () {
-    function MessageHandler(options, handlers) {
+    function MessageHandler(options) {
         if (options === void 0) { options = {}; }
-        if (handlers === void 0) { handlers = {}; }
-        this.options = options;
-        this.handlers = handlers;
         this.sequenceId = 0;
+        this.handlers = options;
     }
-    MessageHandler.prototype.handleMessage = function (data) {
-        if (data instanceof ArrayBuffer) {
-            this.handleBinaryData(data);
-        }
-        else {
-            this.handleJSONResponse(data);
+    MessageHandler.prototype.log = function (message) {
+        if (this.handlers.debug) {
+            console.log("[TTSMessageHandler] ".concat(message));
         }
     };
-    MessageHandler.prototype.handleBinaryData = function (data) {
-        var _a, _b;
-        if (data.byteLength === 0) {
+    MessageHandler.prototype.handleMessage = function (message) {
+        var _a, _b, _c, _d, _e, _f;
+        if (message instanceof ArrayBuffer) {
+            if (message.byteLength === 0) {
+                return;
+            }
+            var audioChunk = {
+                data: message,
+                timestamp: performance.now(),
+                sequenceId: this.sequenceId++
+            };
+            (_b = (_a = this.handlers).onAudioChunk) === null || _b === void 0 ? void 0 : _b.call(_a, audioChunk);
             return;
         }
-        var audioChunk = {
-            data: data,
-            timestamp: performance.now(),
-            sequenceId: this.sequenceId++
-        };
-        (_b = (_a = this.handlers).onAudioData) === null || _b === void 0 ? void 0 : _b.call(_a, audioChunk);
-    };
-    MessageHandler.prototype.handleJSONResponse = function (response) {
-        var _a, _b, _c, _d, _e, _f;
-        switch (response.type) {
-            case 'Metadata':
-                (_b = (_a = this.handlers).onMetadata) === null || _b === void 0 ? void 0 : _b.call(_a, response);
-                break;
-            case 'Flushed':
-                (_d = (_c = this.handlers).onFlushed) === null || _d === void 0 ? void 0 : _d.call(_c);
-                break;
-            case 'Cleared':
-                (_f = (_e = this.handlers).onCleared) === null || _f === void 0 ? void 0 : _f.call(_e);
-                break;
-            case 'Error':
-                if ('err_code' in response && 'err_msg' in response) {
-                    this.handleError({
-                        type: 'Error',
-                        err_code: response.err_code,
-                        err_msg: response.err_msg,
-                        description: response.description
-                    });
-                }
-                break;
+        if (message.type === 'Error') {
+            var error = new APIError('Deepgram API error', {
+                endpoint: 'tts',
+                statusCode: 400,
+                statusText: message.err_code,
+                originalError: new Error(message.err_msg)
+            });
+            (_d = (_c = this.handlers).onError) === null || _d === void 0 ? void 0 : _d.call(_c, error);
+            return;
         }
-    };
-    MessageHandler.prototype.handleError = function (response) {
-        var _a, _b;
-        var error = {
-            name: 'DeepgramAPIError',
-            message: response.err_msg,
-            type: 'api',
-            code: response.err_code,
-            details: {
-                originalResponse: response,
-                description: response.description
-            }
-        };
-        if (this.options.debug) {
-            console.error('DeepgramTTS: API Error:', error);
+        if (message.type === 'Complete') {
+            (_f = (_e = this.handlers).onComplete) === null || _f === void 0 ? void 0 : _f.call(_e);
+            return;
         }
-        (_b = (_a = this.handlers).onError) === null || _b === void 0 ? void 0 : _b.call(_a, error);
+        this.log("Unknown message type: ".concat(message.type));
     };
     MessageHandler.prototype.resetSequence = function () {
         this.sequenceId = 0;

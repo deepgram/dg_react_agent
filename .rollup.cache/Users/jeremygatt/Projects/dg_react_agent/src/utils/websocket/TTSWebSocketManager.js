@@ -1,26 +1,23 @@
 import { __assign, __extends } from "tslib";
-import { WebSocketManager } from './WebSocketManager';
+import { BaseWebSocketManager } from '../shared/BaseWebSocketManager';
 var TTSWebSocketManager = /** @class */ (function (_super) {
     __extends(TTSWebSocketManager, _super);
     function TTSWebSocketManager(options, handlers) {
         if (handlers === void 0) { handlers = {}; }
-        return _super.call(this, __assign(__assign({}, options), { url: 'wss://api.deepgram.com/v1/speak' }), handlers) || this;
+        var _this = _super.call(this, __assign(__assign({}, options), { url: TTSWebSocketManager.BASE_URL }), handlers) || this;
+        _this.ttsOptions = options;
+        return _this;
     }
     TTSWebSocketManager.prototype.buildWebSocketURL = function () {
-        var options = this.options;
-        var baseURL = 'wss://api.deepgram.com/v1/speak';
-        var params = new URLSearchParams({
-            model: options.model || 'aura-2-thalia-en',
-            encoding: options.encoding || 'linear16',
-            sample_rate: String(options.sampleRate || 48000),
-            container: 'none'
-        });
-        return "".concat(baseURL, "?").concat(params.toString());
+        var url = new URL(TTSWebSocketManager.BASE_URL);
+        url.searchParams.append('model', this.ttsOptions.model);
+        url.searchParams.append('encoding', this.ttsOptions.encoding);
+        url.searchParams.append('sample_rate', this.ttsOptions.sampleRate.toString());
+        url.searchParams.append('container', 'none');
+        return url.toString();
     };
-    TTSWebSocketManager.prototype.sendJSON = function (message) {
-        this.sendMessage(message);
-    };
+    TTSWebSocketManager.BASE_URL = 'wss://api.deepgram.com/v1/speak';
     return TTSWebSocketManager;
-}(WebSocketManager));
+}(BaseWebSocketManager));
 export { TTSWebSocketManager };
 //# sourceMappingURL=TTSWebSocketManager.js.map

@@ -1,7 +1,7 @@
-// Core Component
-export { default as DeepgramVoiceInteraction } from './core';
+// Core Hook
+export { useVoiceInteraction as useDeepgramVoiceInteraction } from '../../hooks/useVoice/useVoiceInteraction';
 // Framework Adapters
-export { DeepgramWrapper } from './adapters/next';
+export { DeepgramVoiceInteraction } from './adapters/next';
 // Wrappers
 export { DeepgramErrorBoundary } from './wrappers/ErrorBoundary';
 // Types

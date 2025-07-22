@@ -1,209 +1,298 @@
 # Deepgram React Components Library Primer
 
-## Overview
-
-This library provides React components for integrating Deepgram's voice and text-to-speech (TTS) services. The architecture follows a clear separation between core functionality (src) and demonstration (test-app).
+## Project Overview
+This library provides React components and hooks for integrating Deepgram's voice and text-to-speech (TTS) services. It follows a modular, extensible architecture that separates core functionality from demo implementations.
 
 ## Core Architecture Principles
 
-### 1. Component Layer Separation
-
-- **Source Package (`src/`)**: Contains all core functionality
-  - WebSocket management
-  - Audio processing
-  - State management
-  - Type definitions
-  - Core hooks and components
-
-- **Demo Application (`test-app/`)**: Serves as a testing and demonstration platform
-  - Implementation examples
-  - UI/UX patterns
-  - Testing scenarios
-  - No business logic
-
-### 2. Core Components
-
-#### Text-to-Speech (TTS)
-- Primary Hook: `useDeepgramTTS`
-- Responsibilities:
-  - WebSocket connection management
-  - Audio playback
-  - State management
-  - Error handling
-  - Metrics collection
-
-#### Voice Interaction
-- Primary Component: `DeepgramVoiceInteraction`
-- Features:
-  - Real-time transcription
-  - Agent interaction
-  - Audio management
-  - State management
-  - Error handling
-
-### 3. Design Patterns
-
-#### State Management
-- Use React's built-in state management (useState, useReducer)
-- Prefer local state over global state
-- Use refs for values that shouldn't trigger re-renders
-- Implement proper cleanup in useEffect hooks
-
-#### Performance Optimization
-- Memoize callbacks and complex objects
-- Prevent unnecessary re-renders
-- Use refs for manager instances
-- Implement proper cleanup for resources
-
-#### Error Handling
-- Centralized error handling
-- Consistent error types and structures
-- Proper error propagation
-- User-friendly error messages
-
-### 4. Code Organization
-
+### Package Structure
 ```
 src/
-├── components/           # Core components
-│   ├── DeepgramTTS/     # TTS functionality
-│   └── DeepgramVoiceInteraction/  # Voice interaction
-├── types/               # TypeScript definitions
-├── utils/              # Shared utilities
-│   ├── audio/          # Audio processing
-│   ├── shared/         # Common utilities
-│   ├── state/          # State management
-│   ├── tts/            # TTS-specific utilities
-│   └── websocket/      # WebSocket management
+  ├─ components/          # Feature-specific components and hooks
+  │  ├─ DeepgramTTS/
+  │  │  ├─ hooks/        # TTS-specific hooks
+  │  │  └─ index.ts      # Public API
+  │  └─ DeepgramAgent/   # Formerly DeepgramVoiceInteraction
+  │     ├─ hooks/        # Agent-specific hooks
+  │     └─ index.ts      # Public API
+  ├─ hooks/              # Base hooks for shared functionality
+  │  ├─ useAudio/        # Audio input/output hooks
+  │  ├─ useWebSocket/    # WebSocket connection hooks
+  │  └─ useVoice/        # Voice interaction hooks
+  ├─ types/              # TypeScript type definitions
+  │  ├─ common/          # Shared types (errors, config, etc.)
+  │  ├─ tts/            # TTS-specific types
+  │  └─ voice/          # Voice-specific types
+  └─ utils/              # Utility classes and functions
+     ├─ shared/         # Base classes and shared utilities
+     ├─ audio/          # Audio management
+     ├─ tts/            # TTS-specific utilities
+     ├─ voice/          # Voice-specific utilities
+     └─ websocket/      # WebSocket management
 ```
 
-## Development Guidelines
+### Core vs Demo Separation
+- Core functionality lives in `src/` package
+- Demo/example code lives in `test-app/`
+- Demo app should only consume the public API
+- Heavy lifting (WebSocket, audio, etc.) belongs in `src/`
 
-### 1. Component Development
+### Naming Conventions
+- "Agent" is used instead of "VoiceInteraction" throughout the codebase
+- Component names: `DeepgramAgent`, `DeepgramTTS`
+- Hook names: `useDeepgramAgent`, `useDeepgramTTS`
+- Type names follow component/hook names: `DeepgramAgentProps`, `DeepgramAgentHandle`
+- No legacy type names or backward compatibility code is maintained
+- Error types are prefixed with their domain: `AudioError`, `ConnectionError`, etc.
 
-- Keep core functionality in `src/`
-- Implement proper TypeScript types
-- Follow React best practices
-- Document component interfaces
-- Include JSDoc comments
+### Audio Configuration
+Default microphone configuration is standardized:
+```typescript
+{
+  constraints: {
+    sampleRate: 16000,
+    channelCount: 1,
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    latency: 0
+  },
+  bufferSize: 4096
+}
+```
 
-### 2. State Management
+### Base Classes and Inheritance
+Following Java-like patterns while maintaining React best practices:
+- Base classes in `src/utils/shared/` (e.g., `BaseWebSocketManager`, `BaseAudioManager`)
+- Feature-specific implementations extend base classes
+- Shared logic centralized in base classes
+- Type-safe inheritance with TypeScript
 
-- Use appropriate React hooks
-- Implement proper cleanup
-- Handle edge cases
-- Consider component lifecycle
+### Hook Architecture
+1. Base Hooks (`src/hooks/`):
+   - `useAudioInput`: Base audio input functionality
+   - `useWebSocketConnection`: Base WebSocket management
+   - Pure, reusable functionality
 
-### 3. Testing
+2. Feature Hooks (`src/components/*/hooks/`):
+   - Compose base hooks
+   - Add feature-specific logic
+   - Example: `useDeepgramAgent` uses `useAudioInput` and `useWebSocketConnection`
 
-- Write comprehensive tests
-- Test edge cases
-- Test error scenarios
-- Test performance
-- Test cleanup
+### Error Handling
+Structured error hierarchy:
+```typescript
+BaseError
+├─ AudioError
+├─ ConnectionError
+├─ APIError
+└─ VoiceError
+```
 
-### 4. Error Handling
+Error handling principles:
+- Specific error types for different concerns
+- Detailed error information in `details` property
+- Consistent error propagation through hooks
+- Proper cleanup on errors
+- VoiceError includes specific error codes for different scenarios
 
-- Use typed errors
-- Implement proper error boundaries
-- Log errors appropriately
-- Provide user feedback
+### Resource Management
+1. Initialization:
+   - Single initialization in `useEffect`
+   - Automatic cleanup on unmount
+   - Prevent duplicate initialization
+   - Microphone setup happens in core package, not demo app
 
-### 5. Performance
+2. Cleanup:
+   - Proper resource cleanup order
+   - Prevent duplicate cleanups
+   - Handle race conditions with flags
+   - Use cleanup flags in refs to prevent race conditions
 
-- Monitor re-renders
-- Use React DevTools
-- Profile when needed
-- Optimize heavy operations
+3. State Management:
+   - Use refs for stable references
+   - Track cleanup state
+   - Handle reconnection gracefully
+   - Maintain options in refs to prevent stale closures
+
+### WebSocket Management
+1. Connection Lifecycle:
+   - Base manager handles connection states
+   - Feature managers handle specific protocols
+   - Prevent duplicate connections
+   - Proper error propagation
+
+2. Message Handling:
+   - Type-safe message processing
+   - Binary data handling for audio
+   - Error recovery strategies
+   - Proper cleanup on errors
+
+## Coding Standards
+
+### React Patterns
+1. Hooks:
+   - Compose functionality from base hooks
+   - Clear dependencies in `useEffect`/`useCallback`
+   - Proper cleanup in `useEffect`
+   - Memoize expensive operations
+   - Use refs for cleanup flags
+
+2. State Management:
+   - Use `useRef` for mutable values
+   - Use `useState` for render-triggering state
+   - Prefer local state over global state
+   - Keep options in refs to prevent stale closures
+
+3. Props:
+   - Clear interface definitions
+   - Optional configuration with defaults
+   - Callback props for events
+   - Consistent naming across components
+
+### TypeScript Usage
+1. Types:
+   - Clear interface definitions
+   - Proper type exports
+   - Discriminated unions for complex types
+   - Avoid `any`
+   - Use specific error types
+   - Consistent naming conventions
+
+2. Error Types:
+   - Extend base error classes
+   - Include detailed error information
+   - Type-safe error handling
+   - Specific error codes for different scenarios
+
+3. Generics:
+   - Use when functionality is truly generic
+   - Constrain generic types appropriately
+   - Prefer concrete types when possible
+
+### Code Organization
+1. File Structure:
+   - One component/hook per file
+   - Clear file naming
+   - Index files for public API
+   - Separate types into `.ts` files
+   - Consistent directory structure
+
+2. Imports/Exports:
+   - Clear import organization
+   - Named exports preferred
+   - Re-export public API through index files
+   - No circular dependencies
+
+3. Documentation:
+   - Clear JSDoc comments
+   - Interface/type documentation
+   - Example usage where appropriate
+   - Document error scenarios
+
+## Future Extensibility
+
+### Speech-to-Text (STT)
+- Reuse audio input infrastructure
+- Extend base WebSocket functionality
+- Share error handling patterns
+- Follow same component/hook patterns
+
+### Shared Audio Management
+- Base audio classes handle common functionality
+- Feature-specific managers extend base classes
+- Consistent audio configuration
+- Standard microphone setup
+
+### WebSocket Management
+- Base WebSocket manager handles connection lifecycle
+- Feature-specific managers handle protocols
+- Consistent error handling and reconnection
+- Type-safe message handling
+
+## Testing and Demo Apps
+
+### Test App Structure
+- Minimal dependencies
+- Clear examples of each feature
+- Proper error handling demonstration
+- Configuration examples
+- Uses only public API
+
+### Component Testing
+- Unit tests for utilities
+- Integration tests for hooks
+- End-to-end tests for full features
+- Error scenario testing
+
+## Build and Deploy
+
+### Package Structure
+- Clear package exports
+- Proper peer dependencies
+- TypeScript declarations
+- Source maps for debugging
+- No legacy exports
+
+### Build Configuration
+- Proper module formats (ESM, CJS)
+- Tree-shaking support
+- TypeScript strict mode
+- Proper dependency handling
+- Clean build output
 
 ## Best Practices
 
-### 1. Code Style
+### Error Handling
+1. Always use appropriate error types
+2. Include detailed error information
+3. Clean up resources on errors
+4. Provide clear error messages
+5. Use specific error codes
 
-- Use TypeScript
-- Follow ESLint rules
-- Write clear comments
-- Use consistent naming
+### Performance
+1. Proper cleanup of resources
+2. Memoize expensive operations
+3. Avoid unnecessary re-renders
+4. Handle large audio data efficiently
+5. Use cleanup flags to prevent race conditions
 
-### 2. Component Design
+### Security
+1. Proper API key handling
+2. Secure WebSocket connections
+3. Input validation
+4. Resource limits
+5. Safe error messages
 
-- Keep components focused
-- Implement proper prop types
-- Use proper event handling
-- Follow React patterns
+### Debugging
+1. Comprehensive logging system
+2. Different debug levels
+3. Clear error messages
+4. Performance metrics
+5. Resource tracking
 
-### 3. Resource Management
+## Development Workflow
 
-- Clean up resources
-- Handle WebSocket connections
-- Manage audio contexts
-- Handle memory appropriately
+### Making Changes
+1. Start with base functionality
+2. Test core features first
+3. Add feature-specific code
+4. Update demo app
+5. Test thoroughly
+6. Update documentation
 
-### 4. Documentation
+### Adding Features
+1. Add base classes if needed
+2. Create/update hooks
+3. Add feature-specific components
+4. Update documentation
+5. Add demo implementation
+6. Follow naming conventions
 
-- Write clear documentation
-- Include examples
-- Document edge cases
-- Keep docs updated
-
-## Common Patterns
-
-### 1. WebSocket Management
-
-- Create and configure WebSocket managers
-- Set up proper event listeners
-- Implement proper error handling
-- Clean up connections on unmount
-
-### 2. Audio Management
-
-- Initialize audio managers with proper configuration
-- Handle audio events appropriately
-- Implement proper error handling
-- Clean up audio resources on unmount
-
-### 3. Error Handling
-
-- Use typed error objects
-- Implement proper error boundaries
-- Provide meaningful error messages
-- Log errors appropriately
-
-## Common Gotchas
-
-1. **Resource Cleanup**: Always clean up WebSocket connections and audio resources in useEffect cleanup functions.
-
-2. **State Updates**: Be careful with state updates in async operations to avoid memory leaks.
-
-3. **Error Handling**: Implement proper error boundaries and error handling for all async operations.
-
-4. **Performance**: Watch for unnecessary re-renders and implement proper memoization.
-
-5. **Browser Support**: Consider browser compatibility for audio and WebSocket features.
-
-## Example Usage
-
-See the `test-app/` directory for comprehensive examples of how to use the components. The test app demonstrates:
-
-- Basic setup and configuration
-- Error handling
-- State management
-- UI patterns
-- Performance optimization
-
-## Contributing
-
-When contributing to this library:
-
-1. Follow the established patterns
-2. Write comprehensive tests
-3. Document your changes
-4. Consider backward compatibility
-5. Follow the PR template
-
-## Additional Resources
-
-- [React Documentation](https://reactjs.org/docs/getting-started.html)
-- [TypeScript Documentation](https://www.typescriptlang.org/docs/)
-- [WebSocket API](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
-- [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) 
+### Fixing Issues
+1. Identify root cause
+2. Fix in appropriate layer
+3. Add tests
+4. Update documentation
+5. Verify fix in demo app
+6. Consider impact on other features 

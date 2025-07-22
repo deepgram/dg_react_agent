@@ -1,13 +1,24 @@
 /**
- * Deepgram Voice Interaction
+ * Deepgram React Components
  *
  * A React component library for integrating with Deepgram's voice agent and transcription services
  */
-// Voice Interaction Components
-export { DeepgramVoiceInteraction, DeepgramWrapper, DeepgramErrorBoundary } from './components/DeepgramVoiceInteraction';
-// TTS functionality
+// Re-export all types
+export * from './types/voice';
+export * from './types/tts';
+export * from './types/common/audio';
+export * from './types/common/connection';
+export * from './types/common/microphone';
+// Re-export hooks
 export { useDeepgramTTS } from './components/DeepgramTTS';
-// Utils
-export { AudioManager } from './utils/audio/AudioManager';
-export { WebSocketManager } from './utils/websocket/WebSocketManager';
+export { useDeepgramAgent } from './components/DeepgramAgent/hooks/useDeepgramAgent';
+export { useAgentState } from './hooks/useVoice/useAgentState';
+export { useMessageHandling } from './hooks/useVoice/useMessageHandling';
+export { useWebSocketConnection } from './hooks/useWebSocket/useWebSocketConnection';
+export { useAudioManager } from './hooks/useAudio/useAudioManager';
+export { useAudioInput } from './hooks/useAudio/useAudioInput';
+export { useAudioOutput } from './hooks/useAudio/useAudioOutput';
+// Re-export components
+export { DeepgramAgent } from './components/DeepgramAgent';
+export { DeepgramErrorBoundary } from './components/DeepgramAgent';
 //# sourceMappingURL=index.js.map

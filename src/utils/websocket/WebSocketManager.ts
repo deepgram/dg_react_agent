@@ -136,16 +136,11 @@ export class WebSocketManager {
   }
 
   protected handleMessageError(error: Error): void {
-    const messageError: ConnectionError = {
-      name: 'MessageError',
-      message: `Failed to parse WebSocket message: ${error.message}`,
-      type: 'connection',
-      code: 'MESSAGE_PARSE_ERROR',
-      details: { originalError: error }
-    };
-
-    this.handlers.onError?.(messageError);
-    this.notifyListeners({ type: 'error', error: messageError });
+    const connectionError = new ConnectionError('Failed to parse WebSocket message', {
+      originalError: error
+    });
+    this.handlers.onError?.(connectionError);
+    this.notifyListeners({ type: 'error', error: connectionError });
   }
 
   protected shouldReconnect(): boolean {
@@ -228,6 +223,9 @@ export class WebSocketManager {
   }
 
   protected buildWebSocketURL(): string {
+    if (!this.options.url) {
+      throw new Error('WebSocket URL is required');
+    }
     return this.options.url;
   }
 

@@ -14,6 +14,7 @@
     "isolatedModules": true,
     "jsx": "react",
     "incremental": true,
+    "noUnusedLocals": false,
     "baseUrl": ".",
     "paths": {
       "*": ["*"]

@@ -1,0 +1,1 @@
+export { DeepgramAgent } from './index';

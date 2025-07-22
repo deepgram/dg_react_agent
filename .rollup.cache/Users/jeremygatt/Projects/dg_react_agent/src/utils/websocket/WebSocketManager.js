@@ -1,3 +1,4 @@
+import { ConnectionError } from '../../types/common/error';
 // Global instance counter for debugging
 var instanceCounter = 0;
 var WebSocketManager = /** @class */ (function () {
@@ -114,15 +115,11 @@ var WebSocketManager = /** @class */ (function () {
     };
     WebSocketManager.prototype.handleMessageError = function (error) {
         var _a, _b;
-        var messageError = {
-            name: 'MessageError',
-            message: "Failed to parse WebSocket message: ".concat(error.message),
-            type: 'connection',
-            code: 'MESSAGE_PARSE_ERROR',
-            details: { originalError: error }
-        };
-        (_b = (_a = this.handlers).onError) === null || _b === void 0 ? void 0 : _b.call(_a, messageError);
-        this.notifyListeners({ type: 'error', error: messageError });
+        var connectionError = new ConnectionError('Failed to parse WebSocket message', {
+            originalError: error
+        });
+        (_b = (_a = this.handlers).onError) === null || _b === void 0 ? void 0 : _b.call(_a, connectionError);
+        this.notifyListeners({ type: 'error', error: connectionError });
     };
     WebSocketManager.prototype.shouldReconnect = function () {
         var _a;
@@ -193,6 +190,9 @@ var WebSocketManager = /** @class */ (function () {
         this.eventListeners.clear();
     };
     WebSocketManager.prototype.buildWebSocketURL = function () {
+        if (!this.options.url) {
+            throw new Error('WebSocket URL is required');
+        }
         return this.options.url;
     };
     WebSocketManager.prototype.addEventListener = function (listener) {

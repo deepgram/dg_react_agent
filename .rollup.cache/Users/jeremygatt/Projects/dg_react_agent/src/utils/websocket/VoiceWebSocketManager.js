@@ -1,36 +1,46 @@
-import { __extends } from "tslib";
-import { WebSocketManager } from './WebSocketManager';
+import { __assign, __extends } from "tslib";
+import { BaseWebSocketManager } from '../shared/BaseWebSocketManager';
 var VoiceWebSocketManager = /** @class */ (function (_super) {
     __extends(VoiceWebSocketManager, _super);
     function VoiceWebSocketManager(options, handlers) {
         if (handlers === void 0) { handlers = {}; }
-        return _super.call(this, options, handlers) || this;
+        var _this = _super.call(this, __assign(__assign({}, options), { url: VoiceWebSocketManager.BASE_URLS[options.type] }), handlers) || this;
+        _this.voiceOptions = options;
+        return _this;
     }
     VoiceWebSocketManager.prototype.buildWebSocketURL = function () {
-        var options = this.options;
-        var baseURL = options.url;
-        if (!options.queryParams) {
-            return baseURL;
+        var url = new URL(VoiceWebSocketManager.BASE_URLS[this.voiceOptions.type]);
+        if (this.voiceOptions.type === 'transcription') {
+            if (this.voiceOptions.model) {
+                url.searchParams.append('model', this.voiceOptions.model);
+            }
+            if (this.voiceOptions.encoding) {
+                url.searchParams.append('encoding', this.voiceOptions.encoding);
+            }
+            if (this.voiceOptions.sampleRate) {
+                url.searchParams.append('sample_rate', this.voiceOptions.sampleRate.toString());
+            }
         }
-        var params = new URLSearchParams();
-        for (var _i = 0, _a = Object.entries(options.queryParams); _i < _a.length; _i++) {
-            var _b = _a[_i], key = _b[0], value = _b[1];
-            params.append(key, String(value));
-        }
-        return "".concat(baseURL, "?").concat(params.toString());
-    };
-    VoiceWebSocketManager.prototype.sendCloseStream = function () {
-        if (this.isConnected()) {
-            this.sendMessage({ type: 'CloseStream' });
-        }
-    };
-    VoiceWebSocketManager.prototype.close = function () {
-        this.disconnect();
+        return url.toString();
     };
     VoiceWebSocketManager.prototype.sendJSON = function (message) {
         this.sendMessage(message);
     };
+    VoiceWebSocketManager.prototype.sendCloseStream = function () {
+        if (this.voiceOptions.type === 'transcription') {
+            this.sendMessage({ type: 'CloseStream' });
+        }
+    };
+    VoiceWebSocketManager.prototype.sendAgentSettings = function (settings) {
+        if (this.voiceOptions.type === 'agent') {
+            this.sendMessage(settings);
+        }
+    };
+    VoiceWebSocketManager.BASE_URLS = {
+        transcription: 'wss://api.deepgram.com/v1/listen',
+        agent: 'wss://agent.deepgram.com/v1/agent/converse'
+    };
     return VoiceWebSocketManager;
-}(WebSocketManager));
+}(BaseWebSocketManager));
 export { VoiceWebSocketManager };
 //# sourceMappingURL=VoiceWebSocketManager.js.map

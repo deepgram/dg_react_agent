@@ -10,11 +10,22 @@
 export const AUDIO_CONFIG = {
   sampleRate: 48000,
   encoding: 'linear16',
-  channels: 1,
-  bufferSize: 4096,
-  outputSampleRate: 48000,
-  normalizeVolume: true,
-  normalizationFactor: 128
+  input: {
+    channels: 1,
+    bufferSize: 4096,
+    constraints: {
+      sampleRate: 48000,
+      channelCount: 1,
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      latency: 0
+    }
+  },
+  output: {
+    channels: 1,
+    bufferSize: 4096
+  }
 } as const;
 
 // WebSocket Configuration
@@ -30,37 +41,41 @@ export const WEBSOCKET_CONFIG = {
 
 // Model Configuration
 export const MODEL_CONFIG = {
-  tts: {
-    default: 'aura-2-thalia-en'
-  },
   transcription: {
     default: 'nova-2',
-    language: 'en-US',
-    smart_format: true,
-    interim_results: true
+    alternatives: ['nova', 'enhanced']
   },
   agent: {
+    default: 'gpt-4',
+    alternatives: ['gpt-3.5-turbo', 'claude-2'],
     listen: 'nova-2',
-    think: 'gpt-4o-mini',
+    think: 'gpt-4',
     speak: 'aura-2-apollo-en',
     language: 'en',
-    thinkProviderType: 'open_ai',
-    defaultInstructions: 'You are a helpful voice assistant.'
+    thinkProviderType: 'open_ai' as const
+  },
+  tts: {
+    default: 'aura-2-thalia-en',
+    alternatives: ['aura-2-apollo-en', 'aura-2-athena-en']
   }
 } as const;
 
-// Microphone Configuration
-export const DEFAULT_MICROPHONE_CONFIG = {
-  constraints: {
-    sampleRate: AUDIO_CONFIG.sampleRate,
-    channelCount: AUDIO_CONFIG.channels,
-    echoCancellation: true,
-    noiseSuppression: false,
-    autoGainControl: false,
-    latency: 0.01 // 10ms latency for real-time interaction
-  },
-  bufferSize: AUDIO_CONFIG.bufferSize,
-  debug: false
+// Audio context configuration
+export const AUDIO_CONTEXT_CONFIG = {
+  sampleRate: AUDIO_CONFIG.sampleRate,
+  latencyHint: 'interactive' as const,
+  // Additional settings that might be needed in the future
+  // preferredSampleRate: 48000,
+  // preferredBufferSize: 4096
+} as const;
+
+// Microphone configuration
+export const MICROPHONE_CONFIG = {
+  constraints: AUDIO_CONFIG.input.constraints,
+  bufferSize: AUDIO_CONFIG.input.bufferSize,
+  // Additional settings that might be needed in the future
+  // autoGainControl: true,
+  // preferredDevice: null
 } as const;
 
 // Debug Configuration
@@ -99,7 +114,7 @@ export type ErrorCode = keyof typeof ERROR_CONFIG.errorCodes;
 export interface BaseComponentConfig {
   debug?: boolean | DebugLevel;
   enableMetrics?: boolean;
-  microphoneConfig?: Partial<typeof DEFAULT_MICROPHONE_CONFIG>;
+  microphoneConfig?: Partial<typeof MICROPHONE_CONFIG>;
   endpointOverrides?: Partial<typeof WEBSOCKET_CONFIG.endpoints>;
 }
 
@@ -111,8 +126,8 @@ export function mergeConfig<T extends BaseComponentConfig>(defaults: T, userConf
     ...defaults,
     ...userConfig,
     microphoneConfig: userConfig.microphoneConfig
-      ? { ...DEFAULT_MICROPHONE_CONFIG, ...userConfig.microphoneConfig }
-      : DEFAULT_MICROPHONE_CONFIG,
+      ? { ...MICROPHONE_CONFIG, ...userConfig.microphoneConfig }
+      : MICROPHONE_CONFIG,
     endpointOverrides: userConfig.endpointOverrides
       ? { ...WEBSOCKET_CONFIG.endpoints, ...userConfig.endpointOverrides }
       : WEBSOCKET_CONFIG.endpoints

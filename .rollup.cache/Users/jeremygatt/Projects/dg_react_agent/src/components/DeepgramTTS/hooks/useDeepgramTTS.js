@@ -1,7 +1,8 @@
 import { __assign, __awaiter, __generator } from "tslib";
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { MessageHandler } from '../../../utils/tts/messageHandler';
-import { AudioManager } from '../../../utils/audio/AudioManager';
+import { ProtocolHandler } from '../../../utils/tts/protocolHandler';
+import { AudioOutputManager } from '../../../utils/audio/AudioOutputManager';
 import { MetricsCollector } from '../../../utils/tts/metricsCollector';
 import { TTSWebSocketManager } from '../../../utils/websocket/TTSWebSocketManager';
 import { AUDIO_CONFIG, WEBSOCKET_CONFIG, MODEL_CONFIG, DEBUG_CONFIG, METRICS_CONFIG, mergeConfig } from '../../../utils/shared/config';
@@ -23,6 +24,8 @@ export function useDeepgramTTS(apiKey, options) {
     var _c = useState(null), error = _c[0], setError = _c[1];
     var _d = useState(false), isPlaying = _d[0], setIsPlaying = _d[1];
     var _e = useState(null), metrics = _e[0], setMetrics = _e[1];
+    // Cleanup state tracking
+    var isCleaningUpRef = useRef(false);
     // Refs for managers (prevent recreating on every render)
     var websocketManagerRef = useRef(null);
     var messageHandlerRef = useRef(null);
@@ -91,15 +94,40 @@ export function useDeepgramTTS(apiKey, options) {
         (_a = memoizedOptions.onError) === null || _a === void 0 ? void 0 : _a.call(memoizedOptions, ttsError);
         throw ttsError;
     }, [log, memoizedOptions.onError]);
+    // Initialize protocol handler
+    var initializeProtocolHandler = useCallback(function () {
+        protocolHandlerRef.current = new ProtocolHandler({
+            debug: memoizedOptions.debugConfig.managerDebug,
+            enableTextChunking: config.enableTextChunking,
+            maxChunkSize: config.maxChunkSize
+        });
+    }, [memoizedOptions.debugConfig.managerDebug, config.enableTextChunking, config.maxChunkSize]);
     // Utility function to send WebSocket messages
     var sendWebSocketMessage = useCallback(function (createMessage) {
-        var message = createMessage();
-        if (message && websocketManagerRef.current) {
+        try {
+            var message = createMessage();
+            log("\uD83D\uDCE4 Attempting to send message: ".concat(JSON.stringify(message)), 'verbose');
+            if (!message) {
+                log('❌ Failed to create message - createMessage returned null/undefined');
+                return false;
+            }
+            if (!websocketManagerRef.current) {
+                log('❌ Failed to send message - WebSocket manager is not initialized');
+                return false;
+            }
+            if (websocketManagerRef.current.getState() !== 'connected') {
+                log("\u274C Failed to send message - WebSocket is not connected (state: ".concat(websocketManagerRef.current.getState(), ")"));
+                return false;
+            }
             websocketManagerRef.current.sendMessage(message);
+            log("\u2705 Message sent successfully: ".concat(message.type), 'verbose');
             return true;
         }
-        return false;
-    }, []);
+        catch (error) {
+            log("\u274C Error in sendWebSocketMessage: ".concat(error instanceof Error ? error.message : 'Unknown error'));
+            return false;
+        }
+    }, [log]);
     // Utility function to ensure the system is ready
     var ensureReady = useCallback(function () {
         if (!isReady) {
@@ -108,21 +136,32 @@ export function useDeepgramTTS(apiKey, options) {
     }, [isReady]);
     // Utility function to clean up resources
     var cleanupResources = useCallback(function () {
-        var _a, _b, _c, _d, _e;
+        // Prevent duplicate cleanups
+        if (isCleaningUpRef.current) {
+            log('🔄 Cleanup already in progress, skipping', 'verbose');
+            return;
+        }
+        isCleaningUpRef.current = true;
         log('🧹 Cleaning up TTS resources', 'verbose');
         // Stop and clean audio
-        (_a = audioManagerRef.current) === null || _a === void 0 ? void 0 : _a.stop();
-        (_b = audioManagerRef.current) === null || _b === void 0 ? void 0 : _b.clearAudioQueue();
-        (_c = audioManagerRef.current) === null || _c === void 0 ? void 0 : _c.cleanup();
+        if (audioManagerRef.current) {
+            audioManagerRef.current.stop();
+            audioManagerRef.current.clearAudioQueue();
+            audioManagerRef.current.cleanup();
+            audioManagerRef.current = null;
+        }
+        // Clean up WebSocket
+        if (websocketManagerRef.current) {
+            websocketManagerRef.current.cleanup();
+            websocketManagerRef.current = null;
+        }
         // Clean up other managers
-        (_d = websocketManagerRef.current) === null || _d === void 0 ? void 0 : _d.cleanup();
-        (_e = metricsCollectorRef.current) === null || _e === void 0 ? void 0 : _e.reset();
-        // Reset refs
-        audioManagerRef.current = null;
-        websocketManagerRef.current = null;
+        if (metricsCollectorRef.current) {
+            metricsCollectorRef.current.reset();
+            metricsCollectorRef.current = null;
+        }
         messageHandlerRef.current = null;
         protocolHandlerRef.current = null;
-        metricsCollectorRef.current = null;
         // Reset state
         setIsConnected(false);
         setIsReady(false);
@@ -130,6 +169,10 @@ export function useDeepgramTTS(apiKey, options) {
         setIsPlaying(false);
         setMetrics(null);
         log('✅ TTS system cleaned up');
+        // Reset cleanup state after a short delay to allow for any pending cleanup operations
+        setTimeout(function () {
+            isCleaningUpRef.current = false;
+        }, 100);
     }, [log]);
     // Initialize metrics collector
     var initializeMetrics = useCallback(function () {
@@ -140,9 +183,8 @@ export function useDeepgramTTS(apiKey, options) {
     // Initialize message handler
     var initializeMessageHandler = useCallback(function () {
         messageHandlerRef.current = new MessageHandler({
-            debug: memoizedOptions.debugConfig.managerDebug
-        }, {
-            onAudioData: function (chunk) {
+            debug: memoizedOptions.debugConfig.managerDebug,
+            onAudioChunk: function (chunk) {
                 var _a;
                 log("\uD83D\uDCE6 Audio chunk received: ".concat(chunk.data.byteLength, " bytes"), 'verbose');
                 if (metricsCollectorRef.current) {
@@ -151,15 +193,8 @@ export function useDeepgramTTS(apiKey, options) {
                 }
                 (_a = audioManagerRef.current) === null || _a === void 0 ? void 0 : _a.queueAudio(chunk.data);
             },
-            onMetadata: function (metadata) {
-                log('📋 Metadata received', 'hook');
-                log("\uD83D\uDCCB Metadata details: ".concat(JSON.stringify(metadata)), 'verbose');
-            },
-            onFlushed: function () {
-                log('✅ Audio stream flushed', 'verbose');
-            },
-            onCleared: function () {
-                log('🧹 Audio queue cleared', 'verbose');
+            onComplete: function () {
+                log('✅ Audio stream complete', 'verbose');
             },
             onError: function (error) {
                 handleOperationError(error, 'Message handler');
@@ -211,21 +246,22 @@ export function useDeepgramTTS(apiKey, options) {
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
-                    audioManagerRef.current = new AudioManager(__assign({ debug: memoizedOptions.debugConfig.managerDebug }, config.microphoneConfig));
-                    audioManagerRef.current.addEventListener(function (event) {
-                        if (event.type === 'ready') {
-                            log('🔊 Audio system ready');
-                        }
-                        else if (event.type === 'playing') {
+                    audioManagerRef.current = new AudioOutputManager({
+                        debug: memoizedOptions.debugConfig.managerDebug,
+                        enableVolumeControl: true,
+                        initialVolume: 1.0
+                    }, {
+                        onAudioStart: function () {
                             log('▶️ Audio playback started', 'verbose');
                             setIsPlaying(true);
                             if (metricsCollectorRef.current) {
                                 metricsCollectorRef.current.markFirstAudio();
                             }
-                        }
-                        else if (event.type === 'error' && event.error) {
-                            handleOperationError(event.error, 'Audio system');
-                        }
+                        },
+                        onAudioEnd: function () {
+                            setIsPlaying(false);
+                        },
+                        onError: function (error) { return handleOperationError(error, 'Audio system'); }
                     });
                     return [4 /*yield*/, audioManagerRef.current.initialize()];
                 case 1:
@@ -233,9 +269,10 @@ export function useDeepgramTTS(apiKey, options) {
                     return [2 /*return*/];
             }
         });
-    }); }, [memoizedOptions.debugConfig.managerDebug, config.microphoneConfig]);
+    }); }, [memoizedOptions.debugConfig.managerDebug, log, handleOperationError]);
     // Initialize TTS system
     useEffect(function () {
+        isCleaningUpRef.current = false;
         if (!apiKey || apiKey.trim() === '') {
             log('No API key provided, skipping initialization');
             return;
@@ -250,6 +287,7 @@ export function useDeepgramTTS(apiKey, options) {
                         log('🚀 Initializing Deepgram TTS...');
                         initializeMetrics();
                         initializeMessageHandler();
+                        initializeProtocolHandler();
                         initializeWebSocket();
                         return [4 /*yield*/, initializeAudio()];
                     case 1:
@@ -272,13 +310,18 @@ export function useDeepgramTTS(apiKey, options) {
             });
         }); };
         initialize();
-        return cleanupResources;
+        return function () {
+            if (!isCleaningUpRef.current) {
+                cleanupResources();
+            }
+        };
     }, [
         apiKey,
         log,
         memoizedOptions.enableMetrics,
         initializeMetrics,
         initializeMessageHandler,
+        initializeProtocolHandler,
         initializeWebSocket,
         initializeAudio,
         cleanupResources,
@@ -371,7 +414,9 @@ export function useDeepgramTTS(apiKey, options) {
     // Disconnect and cleanup
     var disconnect = useCallback(function () {
         log('🔌 Disconnecting TTS system');
-        cleanupResources();
+        if (!isCleaningUpRef.current) {
+            cleanupResources();
+        }
     }, [log, cleanupResources]);
     return {
         speak: speak,

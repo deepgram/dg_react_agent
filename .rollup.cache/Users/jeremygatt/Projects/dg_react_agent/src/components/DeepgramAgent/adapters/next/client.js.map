@@ -1,0 +1,1 @@
+{"version":3,"file":"client.js","sourceRoot":"","sources":["client.tsx"],"names":[],"mappings":"AAAA,YAAY,CAAC;AAEb,OAAO,EAAE,aAAa,EAAE,MAAM,SAAS,CAAC","sourcesContent":["'use client';\n\nexport { DeepgramAgent } from './index'; "]}

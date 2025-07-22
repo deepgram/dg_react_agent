@@ -1,16 +1,5 @@
-export interface MicrophoneConstraints {
-    sampleRate?: number;
-    channelCount?: number;
-    echoCancellation?: boolean;
-    noiseSuppression?: boolean;
-    autoGainControl?: boolean;
-    latency?: number;
-}
-export interface MicrophoneConfig {
-    constraints: MicrophoneConstraints;
-    bufferSize?: number;
-    debug?: boolean;
-}
+import { MICROPHONE_CONFIG } from '../../utils/shared/config';
+export type MicrophoneConfig = typeof MICROPHONE_CONFIG;
 export interface MicrophoneState {
     isInitialized: boolean;
     isRecording: boolean;
@@ -20,11 +9,11 @@ export interface MicrophoneState {
 }
 export interface MicrophoneEventHandlers {
     onInitialized?: () => void;
+    onPermissionChange?: (state: PermissionState) => void;
     onRecordingStart?: () => void;
     onRecordingStop?: () => void;
     onAudioData?: (data: ArrayBuffer) => void;
     onError?: (error: Error) => void;
-    onPermissionChange?: (state: PermissionState) => void;
 }
 export interface MicrophonePermissionResult {
     granted: boolean;
@@ -35,4 +24,3 @@ export interface AudioWorkletMessage {
     type: 'start' | 'stop' | 'started' | 'stopped' | 'audio';
     data?: ArrayBuffer;
 }
-export declare const DEFAULT_MICROPHONE_CONFIG: MicrophoneConfig;

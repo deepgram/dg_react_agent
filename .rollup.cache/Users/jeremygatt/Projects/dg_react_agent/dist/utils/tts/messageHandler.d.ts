@@ -1,23 +1,16 @@
 import { DeepgramTTSResponse, TTSError, AudioChunk } from '../../types/tts';
 interface MessageHandlerOptions {
+    onError?: (error: TTSError) => void;
+    onAudioChunk?: (chunk: AudioChunk) => void;
+    onComplete?: () => void;
     debug?: boolean;
 }
-interface MessageEventHandlers {
-    onAudioData?: (chunk: AudioChunk) => void;
-    onMetadata?: (metadata: any) => void;
-    onFlushed?: () => void;
-    onCleared?: () => void;
-    onError?: (error: TTSError) => void;
-}
 export declare class MessageHandler {
-    private options;
     private handlers;
     private sequenceId;
-    constructor(options?: MessageHandlerOptions, handlers?: MessageEventHandlers);
-    handleMessage(data: ArrayBuffer | DeepgramTTSResponse): void;
-    private handleBinaryData;
-    private handleJSONResponse;
-    private handleError;
+    constructor(options?: MessageHandlerOptions);
+    private log;
+    handleMessage(message: DeepgramTTSResponse | ArrayBuffer): void;
     resetSequence(): void;
     getCurrentSequenceId(): number;
 }

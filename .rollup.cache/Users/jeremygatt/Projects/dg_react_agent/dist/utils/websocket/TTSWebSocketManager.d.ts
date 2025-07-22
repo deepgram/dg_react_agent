@@ -1,14 +1,14 @@
-import { WebSocketManager } from './WebSocketManager';
+import { BaseWebSocketManager } from '../shared/BaseWebSocketManager';
 import { WebSocketManagerOptions, WebSocketEventHandlers } from '../../types/common/connection';
-import { DeepgramTTSMessage } from '../../types/tts';
 interface TTSWebSocketOptions extends Omit<WebSocketManagerOptions, 'url'> {
-    model?: string;
-    encoding?: string;
-    sampleRate?: number;
+    model: string;
+    encoding: string;
+    sampleRate: number;
 }
-export declare class TTSWebSocketManager extends WebSocketManager {
+export declare class TTSWebSocketManager extends BaseWebSocketManager {
+    private static readonly BASE_URL;
+    private ttsOptions;
     constructor(options: TTSWebSocketOptions, handlers?: WebSocketEventHandlers);
     protected buildWebSocketURL(): string;
-    sendJSON(message: DeepgramTTSMessage): void;
 }
 export {};

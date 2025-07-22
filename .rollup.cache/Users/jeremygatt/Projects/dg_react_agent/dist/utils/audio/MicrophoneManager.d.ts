@@ -1,27 +1,44 @@
 import { MicrophoneConfig, MicrophoneState, MicrophoneEventHandlers, MicrophonePermissionResult } from '../../types/common/microphone';
+/**
+ * Manages microphone access, recording, and audio processing.
+ * This class is responsible for:
+ * 1. Microphone permissions and access
+ * 2. Audio context and worklet setup
+ * 3. Recording state management
+ * 4. Audio data processing and streaming
+ */
 export declare class MicrophoneManager {
+    private readonly config;
+    private readonly handlers;
     private audioContext;
     private mediaStream;
     private sourceNode;
     private workletNode;
     private state;
-    private config;
-    private handlers;
-    constructor(config?: Partial<MicrophoneConfig>, handlers?: MicrophoneEventHandlers);
-    private log;
-    private handleError;
+    constructor(config?: MicrophoneConfig, handlers?: MicrophoneEventHandlers);
+    /**
+     * Checks and requests microphone permissions
+     */
     checkPermissions(): Promise<MicrophonePermissionResult>;
-    private requestPermissionFallback;
+    /**
+     * Initializes the audio context and worklet
+     */
     initialize(): Promise<void>;
-    private loadAudioWorklet;
-    private loadInlineWorklet;
+    /**
+     * Starts recording from the microphone
+     */
     startRecording(): Promise<void>;
+    /**
+     * Stops recording
+     */
     stopRecording(): void;
-    private handleWorkletMessage;
-    getState(): MicrophoneState;
+    /**
+     * Cleans up all resources
+     */
+    cleanup(): void;
     isRecording(): boolean;
     isInitialized(): boolean;
     hasPermission(): boolean;
-    getAudioContext(): AudioContext | null;
-    cleanup(): void;
+    getState(): MicrophoneState;
+    private loadWorklet;
 }
