@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { DeepgramTTSOptions, TTSMetrics, TTSError, DebugLevel } from '../../../types/tts';
+import { TTSMetrics, TTSError, DebugLevel } from '../../../types/tts';
 import { ConnectionState } from '../../../types/common/connection';
 import { WebSocketManager } from '../../../utils/websocket/WebSocketManager';
 import { MessageHandler } from '../../../utils/tts/messageHandler';
@@ -7,6 +7,32 @@ import { ProtocolHandler } from '../../../utils/tts/protocolHandler';
 import { AudioManager } from '../../../utils/audio/AudioManager';
 import { MetricsCollector } from '../../../utils/tts/metricsCollector';
 import { TTSWebSocketManager } from '../../../utils/websocket/TTSWebSocketManager';
+import {
+  AUDIO_CONFIG,
+  WEBSOCKET_CONFIG,
+  MODEL_CONFIG,
+  DEBUG_CONFIG,
+  METRICS_CONFIG,
+  mergeConfig,
+  BaseComponentConfig
+} from '../../../utils/shared/config';
+
+interface TTSConfig extends BaseComponentConfig {
+  enableTextChunking?: boolean;
+  maxChunkSize?: number;
+  model?: string;
+  onConnectionChange?: (isConnected: boolean) => void;
+  onError?: (error: TTSError) => void;
+  onMetrics?: (metrics: TTSMetrics) => void;
+}
+
+const DEFAULT_TTS_CONFIG: TTSConfig = {
+  debug: DEBUG_CONFIG.defaultLevel,
+  enableMetrics: METRICS_CONFIG.enableByDefault,
+  enableTextChunking: false,
+  maxChunkSize: METRICS_CONFIG.chunkSizeLimit,
+  model: MODEL_CONFIG.tts.default
+};
 
 interface UseDeepgramTTSReturn {
   speak: (text: string) => Promise<void>;
@@ -14,6 +40,7 @@ interface UseDeepgramTTSReturn {
   flushStream: () => Promise<void>;
   stop: () => void;
   clear: () => Promise<void>;
+  disconnect: () => void;
   isPlaying: boolean;
   isConnected: boolean;
   isReady: boolean;
@@ -21,17 +48,28 @@ interface UseDeepgramTTSReturn {
   metrics: TTSMetrics | null;
 }
 
+// Message Types
+type DeepgramMessage = {
+  type: string;
+  [key: string]: any;
+};
+
 export function useDeepgramTTS(
   apiKey: string,
-  options: DeepgramTTSOptions = {}
+  options: TTSConfig = {}
 ): UseDeepgramTTSReturn {
+  // Merge configuration with defaults
+  const config = useMemo(() => mergeConfig(DEFAULT_TTS_CONFIG, options), [options]);
+
   // State management
-  const [isPlaying] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [, setConnectionState] = useState<ConnectionState>('disconnected');
-  const [error, setError] = useState<TTSError | null>(null);
-  const [metrics] = useState<TTSMetrics | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const [error, setError] = useState<TTSError | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [metrics, setMetrics] = useState<TTSMetrics | null>(null);
+  
+  // Cleanup state tracking
+  const isCleaningUpRef = useRef(false);
 
   // Refs for managers (prevent recreating on every render)
   const websocketManagerRef = useRef<WebSocketManager | null>(null);
@@ -42,25 +80,24 @@ export function useDeepgramTTS(
 
   // Smart debug level processing
   const debugConfig = useMemo(() => {
+    const config = {
+      level: 'off' as DebugLevel,
+      hookDebug: false,
+      managerDebug: false
+    };
+    
     const debugOption = options.debug;
-    
-    if (debugOption === false || debugOption === 'off') {
-      return { level: 'off' as DebugLevel, hookDebug: false, managerDebug: false };
+    switch (debugOption) {
+      case true:
+      case 'hook':
+        return { ...config, level: 'hook', hookDebug: true };
+      case 'manager':
+        return { ...config, level: 'manager', hookDebug: true, managerDebug: true };
+      case 'verbose':
+        return { ...config, level: 'verbose', hookDebug: true, managerDebug: true };
+      default:
+        return config;
     }
-    
-    if (debugOption === true || debugOption === 'hook') {
-      return { level: 'hook' as DebugLevel, hookDebug: true, managerDebug: false };
-    }
-    
-    if (debugOption === 'manager') {
-      return { level: 'manager' as DebugLevel, hookDebug: true, managerDebug: true };
-    }
-    
-    if (debugOption === 'verbose') {
-      return { level: 'verbose' as DebugLevel, hookDebug: true, managerDebug: true };
-    }
-    
-    return { level: 'off' as DebugLevel, hookDebug: false, managerDebug: false };
   }, [options.debug]);
 
   // Centralized logging function
@@ -78,190 +115,286 @@ export function useDeepgramTTS(
 
   // Memoized options to prevent unnecessary re-initializations
   const memoizedOptions = useMemo(() => ({
-    enableMetrics: options.enableMetrics,
-    enableTextChunking: options.enableTextChunking,
-    maxChunkSize: options.maxChunkSize,
+    enableMetrics: config.enableMetrics,
+    enableTextChunking: config.enableTextChunking,
+    maxChunkSize: config.maxChunkSize,
     debugConfig,
-    onConnectionChange: options.onConnectionChange,
-    onError: options.onError,
-    onMetrics: options.onMetrics
+    onConnectionChange: config.onConnectionChange,
+    onError: config.onError,
+    onMetrics: config.onMetrics
   }), [
-    options.enableMetrics,
-    options.enableTextChunking,
-    options.maxChunkSize,
-    debugConfig,
-    options.onConnectionChange,
-    options.onError,
-    options.onMetrics
+    config.enableMetrics,
+    config.enableTextChunking,
+    config.maxChunkSize,
+    config.onConnectionChange,
+    config.onError,
+    config.onMetrics,
+    debugConfig
   ]);
+
+  // Utility function to handle operation errors
+  const handleOperationError = useCallback((error: unknown, operation: string) => {
+    const ttsError = error as TTSError;
+    log(`❌ ${operation} failed: ${ttsError.message}`);
+    setError(ttsError);
+    memoizedOptions.onError?.(ttsError);
+    throw ttsError;
+  }, [log, memoizedOptions.onError]);
+
+  // Initialize protocol handler
+  const initializeProtocolHandler = useCallback(() => {
+    protocolHandlerRef.current = new ProtocolHandler({
+      debug: memoizedOptions.debugConfig.managerDebug,
+      enableTextChunking: config.enableTextChunking,
+      maxChunkSize: config.maxChunkSize
+    });
+  }, [memoizedOptions.debugConfig.managerDebug, config.enableTextChunking, config.maxChunkSize]);
+
+  // Utility function to send WebSocket messages
+  const sendWebSocketMessage = useCallback((createMessage: () => DeepgramMessage | undefined | null) => {
+    try {
+      const message = createMessage();
+      log(`📤 Attempting to send message: ${JSON.stringify(message)}`, 'verbose');
+      
+      if (!message) {
+        log('❌ Failed to create message - createMessage returned null/undefined');
+        return false;
+      }
+
+      if (!websocketManagerRef.current) {
+        log('❌ Failed to send message - WebSocket manager is not initialized');
+        return false;
+      }
+
+      if (websocketManagerRef.current.getState() !== 'connected') {
+        log(`❌ Failed to send message - WebSocket is not connected (state: ${websocketManagerRef.current.getState()})`);
+        return false;
+      }
+
+      websocketManagerRef.current.sendMessage(message);
+      log(`✅ Message sent successfully: ${message.type}`, 'verbose');
+      return true;
+    } catch (error) {
+      log(`❌ Error in sendWebSocketMessage: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false;
+    }
+  }, [log]);
+
+  // Utility function to ensure the system is ready
+  const ensureReady = useCallback(() => {
+    if (!isReady) {
+      throw new Error('TTS is not ready');
+    }
+  }, [isReady]);
+
+  // Utility function to clean up resources
+  const cleanupResources = useCallback(() => {
+    // Prevent duplicate cleanups
+    if (isCleaningUpRef.current) {
+      log('🔄 Cleanup already in progress, skipping', 'verbose');
+      return;
+    }
+
+    isCleaningUpRef.current = true;
+    log('🧹 Cleaning up TTS resources', 'verbose');
+    
+    // Stop and clean audio
+    if (audioManagerRef.current) {
+      audioManagerRef.current.stop();
+      audioManagerRef.current.clearAudioQueue();
+      audioManagerRef.current.cleanup();
+      audioManagerRef.current = null;
+    }
+    
+    // Clean up WebSocket
+    if (websocketManagerRef.current) {
+      websocketManagerRef.current.cleanup();
+      websocketManagerRef.current = null;
+    }
+
+    // Clean up other managers
+    if (metricsCollectorRef.current) {
+      metricsCollectorRef.current.reset();
+      metricsCollectorRef.current = null;
+    }
+
+    messageHandlerRef.current = null;
+    protocolHandlerRef.current = null;
+    
+    // Reset state
+    setIsConnected(false);
+    setIsReady(false);
+    setError(null);
+    setIsPlaying(false);
+    setMetrics(null);
+    
+    log('✅ TTS system cleaned up');
+    
+    // Reset cleanup state after a short delay to allow for any pending cleanup operations
+    setTimeout(() => {
+      isCleaningUpRef.current = false;
+    }, 100);
+  }, [log]);
+
+  // Initialize metrics collector
+  const initializeMetrics = useCallback(() => {
+    metricsCollectorRef.current = new MetricsCollector({
+      debug: memoizedOptions.debugConfig.managerDebug
+    });
+  }, [memoizedOptions.debugConfig.managerDebug]);
+
+  // Initialize message handler
+  const initializeMessageHandler = useCallback(() => {
+    messageHandlerRef.current = new MessageHandler({
+      debug: memoizedOptions.debugConfig.managerDebug
+    }, {
+      onAudioData: (chunk) => {
+        log(`📦 Audio chunk received: ${chunk.data.byteLength} bytes`, 'verbose');
+
+        if (metricsCollectorRef.current) {
+          metricsCollectorRef.current.markFirstByte();
+          metricsCollectorRef.current.addChunk(chunk.data.byteLength);
+        }
+
+        audioManagerRef.current?.queueAudio(chunk.data);
+      },
+      onMetadata: (metadata) => {
+        log('📋 Metadata received', 'hook');
+        log(`📋 Metadata details: ${JSON.stringify(metadata)}`, 'verbose');
+      },
+      onFlushed: () => {
+        log('✅ Audio stream flushed', 'verbose');
+      },
+      onCleared: () => {
+        log('🧹 Audio queue cleared', 'verbose');
+      },
+      onError: (error) => {
+        handleOperationError(error, 'Message handler');
+      }
+    });
+  }, [log, handleOperationError, memoizedOptions.debugConfig.managerDebug]);
+
+  // Initialize WebSocket manager
+  const initializeWebSocket = useCallback(() => {
+    websocketManagerRef.current = new TTSWebSocketManager({
+      apiKey,
+      debug: memoizedOptions.debugConfig.managerDebug,
+      maxReconnectAttempts: WEBSOCKET_CONFIG.maxReconnectAttempts,
+      reconnectDelay: WEBSOCKET_CONFIG.reconnectDelay,
+      model: config.model || MODEL_CONFIG.tts.default,
+      encoding: AUDIO_CONFIG.encoding,
+      sampleRate: AUDIO_CONFIG.sampleRate
+    }, {
+      onOpen: () => {
+        log('🔗 Connected to Deepgram TTS');
+      },
+      onMessage: (data) => {
+        messageHandlerRef.current?.handleMessage(data);
+      },
+      onClose: () => {
+        log('🔌 Disconnected from Deepgram TTS');
+        setIsConnected(false);
+      },
+      onError: (error) => {
+        handleOperationError(error, 'WebSocket connection');
+      },
+      onConnectionStateChange: (state) => {
+        const stateEmojis: Record<ConnectionState, string> = {
+          'disconnected': '⚫',
+          'connecting': '🟡', 
+          'connected': '🟢',
+          'error': '🔴',
+          'closed': '⚪'
+        };
+        log(`${stateEmojis[state]} Connection: ${state}`);
+        
+        setIsConnected(state === 'connected');
+        memoizedOptions.onConnectionChange?.(state === 'connected');
+      }
+    });
+  }, [apiKey, memoizedOptions.debugConfig.managerDebug, config.model]);
+
+  // Initialize audio manager
+  const initializeAudio = useCallback(async () => {
+    audioManagerRef.current = new AudioManager({
+      debug: memoizedOptions.debugConfig.managerDebug,
+      ...config.microphoneConfig
+    });
+
+    audioManagerRef.current.addEventListener(event => {
+      if (event.type === 'ready') {
+        log('🔊 Audio system ready');
+      } else if (event.type === 'playing') {
+        log('▶️ Audio playback started', 'verbose');
+        setIsPlaying(true);
+        if (metricsCollectorRef.current) {
+          metricsCollectorRef.current.markFirstAudio();
+        }
+      } else if (event.type === 'error' && event.error) {
+        handleOperationError(event.error, 'Audio system');
+      }
+    });
+
+    await audioManagerRef.current.initialize();
+  }, [memoizedOptions.debugConfig.managerDebug, config.microphoneConfig]);
 
   // Initialize TTS system
   useEffect(() => {
-    // Safety check: Don't initialize if no API key
+    isCleaningUpRef.current = false;
+
     if (!apiKey || apiKey.trim() === '') {
       log('No API key provided, skipping initialization');
       return;
     }
 
-    let cleanup: (() => void) | undefined;
-
     const initialize = async () => {
       try {
         log('🚀 Initializing Deepgram TTS...');
 
-        // Initialize metrics collector
-        metricsCollectorRef.current = new MetricsCollector({
-          debug: memoizedOptions.debugConfig.managerDebug
-        });
-
-        // Initialize message handler
-        messageHandlerRef.current = new MessageHandler({
-          debug: memoizedOptions.debugConfig.managerDebug
-        }, {
-          onAudioData: (chunk) => {
-            log(`📦 Audio chunk received: ${chunk.data.byteLength} bytes`, 'verbose');
-
-            // Record metrics
-            if (metricsCollectorRef.current) {
-              metricsCollectorRef.current.markFirstByte();
-              metricsCollectorRef.current.addChunk(chunk.data.byteLength);
-            }
-
-            // Queue audio for playback
-            audioManagerRef.current?.queueAudio(chunk.data);
-          },
-          onMetadata: (metadata) => {
-            log('📋 Metadata received', 'hook');
-            log(`📋 Metadata details: ${JSON.stringify(metadata)}`, 'verbose');
-          },
-          onFlushed: () => {
-            log('✅ Audio stream flushed', 'verbose');
-          },
-          onCleared: () => {
-            log('🧹 Audio queue cleared', 'verbose');
-          },
-          onError: (error) => {
-            log(`❌ Message handler error: ${error.message}`);
-            setError(error);
-            memoizedOptions.onError?.(error);
-          }
-        });
-
-        // Initialize protocol handler
-        protocolHandlerRef.current = new ProtocolHandler({
-          debug: memoizedOptions.debugConfig.managerDebug,
-          enableTextChunking: memoizedOptions.enableTextChunking,
-          maxChunkSize: memoizedOptions.maxChunkSize
-        });
-
-        // Initialize WebSocket manager
-        websocketManagerRef.current = new TTSWebSocketManager({
-          apiKey,
-          debug: memoizedOptions.debugConfig.managerDebug,
-          maxReconnectAttempts: 0,
-          reconnectDelay: 1000,
-          model: 'aura-2-thalia-en',
-          encoding: 'linear16',
-          sampleRate: 48000
-        }, {
-          onOpen: () => {
-            log('🔗 Connected to Deepgram TTS');
-          },
-          onMessage: (data) => {
-            messageHandlerRef.current?.handleMessage(data);
-          },
-          onClose: () => {
-            log('🔌 Disconnected from Deepgram TTS');
-          },
-          onError: (error) => {
-            log(`❌ Connection error: ${error.message}`);
-            setError(error);
-            memoizedOptions.onError?.(error);
-          },
-          onConnectionStateChange: (state) => {
-            // Only update state if it actually changed
-            setConnectionState(prevState => {
-              if (prevState !== state) {
-                const stateEmojis: Record<ConnectionState, string> = {
-                  'disconnected': '⚫',
-                  'connecting': '🟡', 
-                  'connected': '🟢',
-                  'error': '🔴',
-                  'closed': '⚪'
-                };
-                log(`${stateEmojis[state]} Connection: ${state}`);
-                
-                setIsConnected(state === 'connected');
-                memoizedOptions.onConnectionChange?.(state === 'connected');
-                return state;
-              }
-              return prevState;
-            });
-          }
-        });
-
-        // Initialize audio manager
-        audioManagerRef.current = new AudioManager({
-          debug: memoizedOptions.debugConfig.managerDebug
-        });
-
-        // Set up audio event handlers
-        const unsubscribe = audioManagerRef.current.addEventListener(event => {
-          if (event.type === 'ready') {
-            log('🔊 Audio system ready');
-          } else if (event.type === 'playing') {
-            log('▶️ Audio playback started', 'verbose');
-            if (metricsCollectorRef.current) {
-              metricsCollectorRef.current.markFirstAudio();
-            }
-          } else if (event.type === 'error' && event.error) {
-            log(`❌ Audio error: ${event.error.message}`);
-            setError(event.error);
-            memoizedOptions.onError?.(event.error);
-          }
-        });
-
-        cleanup = () => {
-          log('🧹 Cleaning up TTS resources', 'verbose');
-          unsubscribe();
-          audioManagerRef.current?.cleanup();
-          websocketManagerRef.current?.cleanup();
-        };
-
-        // Initialize audio manager
-        await audioManagerRef.current.initialize();
+        initializeMetrics();
+        initializeMessageHandler();
+        initializeProtocolHandler();
+        initializeWebSocket();
+        await initializeAudio();
 
         // Connect WebSocket
-        websocketManagerRef.current.connect();
+        websocketManagerRef.current?.connect();
 
         // Start metrics collection
         if (memoizedOptions.enableMetrics) {
           metricsCollectorRef.current?.start();
         }
 
-        // Set ready state
         setIsReady(true);
         log('✅ Deepgram TTS ready!');
       } catch (error) {
-        const ttsError = error as TTSError;
-        log(`❌ Initialization failed: ${ttsError.message}`);
-        setError(ttsError);
-        memoizedOptions.onError?.(ttsError);
+        handleOperationError(error, 'Initialization');
       }
     };
 
     initialize();
 
     return () => {
-      cleanup?.();
+      if (!isCleaningUpRef.current) {
+        cleanupResources();
+      }
     };
-  }, [apiKey, memoizedOptions.debugConfig.level, memoizedOptions.enableMetrics, log, memoizedOptions]);
+  }, [
+    apiKey,
+    log,
+    memoizedOptions.enableMetrics,
+    initializeMetrics,
+    initializeMessageHandler,
+    initializeProtocolHandler,
+    initializeWebSocket,
+    initializeAudio,
+    cleanupResources,
+    handleOperationError
+  ]);
 
   // Speak text
   const speak = useCallback(async (text: string): Promise<void> => {
-    if (!isReady) {
-      throw new Error('TTS is not ready');
-    }
+    ensureReady();
 
     if (!text || text.trim().length === 0) {
       throw new Error('Text cannot be empty');
@@ -270,36 +403,29 @@ export function useDeepgramTTS(
     try {
       log(`🗣️ Speaking: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
 
-      // Start metrics collection
       if (memoizedOptions.enableMetrics) {
         metricsCollectorRef.current?.start();
       }
 
-      // Create speak message
-      const message = protocolHandlerRef.current?.createSpeakMessage(text);
-      if (message && websocketManagerRef.current) {
-        websocketManagerRef.current.sendMessage(message);
+      // Send speak message first
+      const speakSuccess = sendWebSocketMessage(() => protocolHandlerRef.current?.createSpeakMessage(text));
+      if (!speakSuccess) {
+        throw new Error('Failed to send speak message');
       }
 
-      // Create flush message
-      const flushMessage = protocolHandlerRef.current?.createFlushMessage();
-      if (flushMessage && websocketManagerRef.current) {
-        websocketManagerRef.current.sendMessage(flushMessage);
+      // Then send flush message
+      const flushSuccess = sendWebSocketMessage(() => protocolHandlerRef.current?.createFlushMessage());
+      if (!flushSuccess) {
+        throw new Error('Failed to send flush message');
       }
     } catch (error) {
-      const ttsError = error as TTSError;
-      log(`❌ Speak failed: ${ttsError.message}`);
-      setError(ttsError);
-      memoizedOptions.onError?.(ttsError);
-      throw ttsError;
+      handleOperationError(error, 'Speak');
     }
-  }, [isReady, memoizedOptions.enableMetrics, memoizedOptions.onError, log]);
+  }, [ensureReady, log, memoizedOptions.enableMetrics, sendWebSocketMessage, handleOperationError]);
 
   // Stream text (for LLM streaming)
   const streamText = useCallback(async (text: string): Promise<void> => {
-    if (!isReady) {
-      throw new Error('TTS is not ready');
-    }
+    ensureReady();
 
     if (!text || text.trim().length === 0) {
       return;
@@ -307,84 +433,60 @@ export function useDeepgramTTS(
 
     try {
       log(`📝 Streaming text: "${text.substring(0, 30)}..."`, 'verbose');
-
-      // Create speak message
-      const message = protocolHandlerRef.current?.createSpeakMessage(text);
-      if (message && websocketManagerRef.current) {
-        websocketManagerRef.current.sendMessage(message);
-      }
+      sendWebSocketMessage(() => protocolHandlerRef.current?.createSpeakMessage(text));
     } catch (error) {
-      const ttsError = error as TTSError;
-      log(`❌ Stream failed: ${ttsError.message}`);
-      setError(ttsError);
-      memoizedOptions.onError?.(ttsError);
-      throw ttsError;
+      handleOperationError(error, 'Stream');
     }
-  }, [isReady, memoizedOptions.onError, log]);
+  }, [ensureReady, log, sendWebSocketMessage, handleOperationError]);
 
   // Flush stream
   const flushStream = useCallback(async (): Promise<void> => {
-    if (!isReady) {
-      throw new Error('TTS is not ready');
-    }
+    ensureReady();
 
     try {
       log('🚿 Flushing stream', 'verbose');
-
-      // Create flush message
-      const flushMessage = protocolHandlerRef.current?.createFlushMessage();
-      if (flushMessage && websocketManagerRef.current) {
-        websocketManagerRef.current.sendMessage(flushMessage);
-      }
+      sendWebSocketMessage(() => protocolHandlerRef.current?.createFlushMessage());
     } catch (error) {
-      const ttsError = error as TTSError;
-      log(`❌ Flush failed: ${ttsError.message}`);
-      setError(ttsError);
-      memoizedOptions.onError?.(ttsError);
-      throw ttsError;
+      handleOperationError(error, 'Flush');
     }
-  }, [isReady, memoizedOptions.onError, log]);
+  }, [ensureReady, log, sendWebSocketMessage, handleOperationError]);
 
   // Clear audio
   const clear = useCallback(async (): Promise<void> => {
-    if (!isReady) {
-      throw new Error('TTS is not ready');
-    }
+    ensureReady();
 
     try {
       log('🧹 Clearing audio queue');
-
-      // Create clear message
-      const clearMessage = protocolHandlerRef.current?.createClearMessage();
-      if (clearMessage && websocketManagerRef.current) {
-        websocketManagerRef.current.sendMessage(clearMessage);
-      }
-
-      // Clear audio queue
+      sendWebSocketMessage(() => protocolHandlerRef.current?.createClearMessage());
       audioManagerRef.current?.clearAudioQueue();
     } catch (error) {
-      const ttsError = error as TTSError;
-      log(`❌ Clear failed: ${ttsError.message}`);
-      setError(ttsError);
-      memoizedOptions.onError?.(ttsError);
-      throw ttsError;
+      handleOperationError(error, 'Clear');
     }
-  }, [isReady, memoizedOptions.onError, log]);
+  }, [ensureReady, log, sendWebSocketMessage, handleOperationError]);
 
   // Stop playback
   const stop = useCallback((): void => {
     log('⏹️ Stopping playback', 'verbose');
     audioManagerRef.current?.stop();
     metricsCollectorRef.current?.reset();
+    setIsPlaying(false);
   }, [log]);
 
-  // Return hook interface
+  // Disconnect and cleanup
+  const disconnect = useCallback((): void => {
+    log('🔌 Disconnecting TTS system');
+    if (!isCleaningUpRef.current) {
+      cleanupResources();
+    }
+  }, [log, cleanupResources]);
+
   return {
     speak,
     streamText,
     flushStream,
     stop,
     clear,
+    disconnect,
     isPlaying,
     isConnected,
     isReady,

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useDeepgramTTS } from '../../../src';
 
 function TTSPage() {
+  const navigate = useNavigate();
   const [inputText, setInputText] = useState('Hello! This is a test of Deepgram text-to-speech functionality.');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -11,7 +12,8 @@ function TTSPage() {
     speak,
     isConnected,
     isReady,
-    error
+    error,
+    disconnect
   } = useDeepgramTTS(
     import.meta.env.VITE_DEEPGRAM_API_KEY || '',
     {
@@ -19,6 +21,11 @@ function TTSPage() {
       enableMetrics: true
     }
   );
+
+  const handleNavigateHome = () => {
+    disconnect();
+    navigate('/');
+  };
 
   const handleSpeak = async () => {
     if (!inputText.trim()) {
@@ -61,7 +68,7 @@ function TTSPage() {
     <div className="min-h-screen bg-gray-900 text-white p-8">
       <div className="max-w-4xl mx-auto">
         <div className="mb-6">
-          <Link to="/" className="text-blue-400 hover:text-blue-300">← Back to Home</Link>
+          <button onClick={handleNavigateHome} className="text-blue-400 hover:text-blue-300">← Back to Home</button>
         </div>
         
         <div className="flex items-center justify-between mb-8">

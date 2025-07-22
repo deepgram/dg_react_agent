@@ -1,24 +1,30 @@
 export interface BaseError {
   name: string;
   message: string;
-  type: 'audio' | 'connection' | 'api';
+  type: 'audio' | 'connection' | 'api' | 'voice';
   code: string;
   details?: any;
 }
 
 export interface AudioError extends BaseError {
   type: 'audio';
-  details: {
-    context: string;
-    originalError: Error;
-    audioContextState?: AudioContextState;
+  details?: {
+    context?: AudioContext | string;
+    deviceId?: string;
+    stream?: MediaStream;
+    originalError?: Error;
+    audioContextState?: string;
   };
 }
 
 export interface ConnectionError extends BaseError {
   type: 'connection';
-  details: {
-    originalError: Error;
+  details?: {
+    url?: string;
+    readyState?: number;
+    closeCode?: number;
+    closeReason?: string;
+    originalError?: Error;
   };
 }
 
@@ -31,4 +37,12 @@ export interface APIError extends BaseError {
   };
 }
 
-export type DeepgramError = AudioError | ConnectionError | APIError; 
+export interface VoiceError extends BaseError {
+  type: 'voice';
+  details?: {
+    originalError?: Error;
+    context?: string;
+  };
+}
+
+export type DeepgramError = AudioError | ConnectionError | APIError | VoiceError; 

@@ -1,21 +1,74 @@
-import { useRef, useState, useCallback, useMemo } from 'react';
+import { useRef, useState, useCallback, useMemo, forwardRef } from 'react';
+import { Link } from 'react-router-dom';
 import { 
-  DeepgramVoiceInteraction, 
+  useDeepgramVoiceInteraction,
   DeepgramVoiceInteractionHandle,
   TranscriptResponse,
   LLMResponse,
   AgentState,
   ConnectionState,
   ServiceType,
-  DeepgramError
+  DeepgramError,
+  AgentOptions,
+  MicrophoneConfig
 } from '../../../src';
 
-// Define UserMessageResponse type locally since it's not exported
 interface UserMessageResponse {
   type: 'user';
   text: string;
   metadata?: any;
 }
+
+interface ChatMessage {
+  id: string;
+  type: 'user' | 'agent';
+  text: string;
+  timestamp: Date;
+}
+
+interface DeepgramVoiceInteractionProps {
+  apiKey: string;
+  transcriptionOptions?: Record<string, any>;
+  agentOptions?: AgentOptions;
+  endpointConfig?: Record<string, any>;
+  microphoneConfig?: Partial<MicrophoneConfig>;
+  onReady?: (isReady: boolean) => void;
+  onTranscriptUpdate?: (transcript: TranscriptResponse) => void;
+  onAgentUtterance?: (response: LLMResponse) => void;
+  onUserMessage?: (message: UserMessageResponse) => void;
+  onAgentStateChange?: (state: AgentState) => void;
+  onConnectionStateChange?: (service: ServiceType, state: ConnectionState) => void;
+  onError?: (error: DeepgramError) => void;
+  onPlaybackStateChange?: (isPlaying: boolean) => void;
+  onMicrophoneData?: (data: ArrayBuffer) => void;
+  debug?: boolean;
+  ref?: React.Ref<DeepgramVoiceInteractionHandle>;
+}
+
+const DeepgramVoiceInteraction = forwardRef<DeepgramVoiceInteractionHandle, DeepgramVoiceInteractionProps>(
+  ({ apiKey, ...props }) => {
+    useDeepgramVoiceInteraction(apiKey, {
+      transcriptionOptions: props.transcriptionOptions,
+      agentOptions: props.agentOptions,
+      endpointOverrides: props.endpointConfig,
+      microphoneConfig: props.microphoneConfig,
+      onReady: props.onReady,
+      onTranscriptUpdate: props.onTranscriptUpdate,
+      onAgentUtterance: props.onAgentUtterance,
+      onUserMessage: props.onUserMessage,
+      onAgentStateChange: props.onAgentStateChange,
+      onConnectionStateChange: props.onConnectionStateChange,
+      onError: props.onError,
+      onPlaybackStateChange: props.onPlaybackStateChange,
+      onMicrophoneData: props.onMicrophoneData,
+      debug: props.debug
+    });
+    
+    return null;
+  }
+);
+
+DeepgramVoiceInteraction.displayName = 'DeepgramVoiceInteraction';
 
 function VoiceInteractionPage() {
   const deepgramRef = useRef<DeepgramVoiceInteractionHandle>(null);
@@ -23,20 +76,16 @@ function VoiceInteractionPage() {
   // State for UI
   const [isReady, setIsReady] = useState(false);
   const [lastTranscript, setLastTranscript] = useState('');
-  const [agentResponse, setAgentResponse] = useState('');
-  const [userMessage, setUserMessage] = useState('');
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [agentState, setAgentState] = useState<AgentState>('idle');
-  const [isRecording] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isSleeping, setIsSleeping] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [connectionStates, setConnectionStates] = useState<Record<ServiceType, ConnectionState>>({
     transcription: 'closed',
     agent: 'closed'
   });
   const [logs, setLogs] = useState<string[]>([]);
-
-  const [microphonePermissions, setMicrophonePermissions] = useState<any>(null);
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
+  const [microphonePermissions, setMicrophonePermissions] = useState<{ granted: boolean; state: string } | null>(null);
   
   // Memoized configuration objects
   const memoizedTranscriptionOptions = useMemo(() => ({
@@ -94,6 +143,16 @@ function VoiceInteractionPage() {
     setLogs(prev => [...prev, `${new Date().toISOString().substring(11, 19)} - ${message}`]);
   }, []);
 
+  // Add chat message
+  const addChatMessage = useCallback((type: 'user' | 'agent', text: string) => {
+    setChatMessages(prev => [...prev, {
+      id: Math.random().toString(36).substring(7),
+      type,
+      text,
+      timestamp: new Date()
+    }]);
+  }, []);
+
   // Event handlers
   const handleReady = useCallback((ready: boolean) => {
     setIsReady(ready);
@@ -122,32 +181,27 @@ function VoiceInteractionPage() {
 
     if (deepgramResponse.channel?.alternatives?.[0]?.transcript) {
       const text = deepgramResponse.channel.alternatives[0].transcript;
-      const speakerId = deepgramResponse.channel.alternatives[0].words?.[0]?.speaker;
-      const displayText = speakerId !== undefined 
-        ? `Speaker ${speakerId}: ${text}` 
-        : text;
-      
-      setLastTranscript(displayText);
+      setLastTranscript(text);
       
       if (deepgramResponse.is_final) {
-        addLog(`Final transcript: ${displayText}`);
+        addLog(`Final transcript: ${text}`);
+        addChatMessage('user', text);
       }
     }
-  }, [addLog]);
+  }, [addLog, addChatMessage]);
 
   const handleAgentUtterance = useCallback((utterance: LLMResponse) => {
-    setAgentResponse(utterance.text);
+    addChatMessage('agent', utterance.text);
     addLog(`Agent said: ${utterance.text}`);
-  }, [addLog]);
+  }, [addLog, addChatMessage]);
 
   const handleUserMessage = useCallback((message: UserMessageResponse) => {
-    setUserMessage(message.text);
+    addChatMessage('user', message.text);
     addLog(`User message from server: ${message.text}`);
-  }, [addLog]);
+  }, [addLog, addChatMessage]);
 
   const handleAgentStateChange = useCallback((state: AgentState) => {
     setAgentState(state);
-    setIsSleeping(state === 'sleeping');
     addLog(`Agent state changed: ${state}`);
   }, [addLog]);
 
@@ -157,7 +211,7 @@ function VoiceInteractionPage() {
   }, [addLog]);
 
   const handlePlaybackStateChange = useCallback((playing: boolean) => {
-    setIsPlaying(playing);
+    // setIsPlaying(playing); // This state variable was removed
     addLog(`Playback: ${playing ? 'started' : 'stopped'}`);
   }, [addLog]);
 
@@ -197,7 +251,7 @@ function VoiceInteractionPage() {
       
     } catch (error) {
       const err = error as DOMException;
-      let state: PermissionState = 'denied';
+      let state = 'denied';
       
       if (err.name === 'NotAllowedError') {
         state = 'denied';
@@ -213,76 +267,182 @@ function VoiceInteractionPage() {
     }
   };
 
-  const startMicrophoneRecording = async () => {
-    if (!microphoneEnabled) {
-      addLog('❌ Please enable microphone first');
-      return;
-    }
-    
-    if (!microphonePermissions?.granted) {
-      addLog('❌ Microphone permissions not granted. Please enable microphone first.');
-      return;
-    }
-    
-    if (deepgramRef.current) {
-      try {
-        addLog('🎙️ Starting microphone recording...');
-        await deepgramRef.current.startRecording();
-        addLog('✅ Microphone recording started successfully!');
-      } catch (error) {
-        addLog(`❌ Error starting microphone: ${(error as Error).message}`);
-      }
-    }
-  };
-
-  const stopMicrophoneRecording = () => {
-    if (deepgramRef.current) {
-      deepgramRef.current.stopRecording();
-      addLog('Microphone recording stopped manually');
-    }
-  };
-
-  // Control functions
-  const startInteraction = async () => {
-    console.log('🚀 Start button clicked!');
+  const handleStartInteraction = async () => {
     addLog('🚀 Starting voice interaction');
     
     if (deepgramRef.current) {
       try {
         await deepgramRef.current.start();
-        console.log('✅ start() method completed successfully');
+        setIsRecording(true);
       } catch (error) {
         addLog(`Error starting: ${(error as Error).message}`);
-        console.error('Start error:', error);
       }
-    } else {
-      console.error('❌ deepgramRef.current is null!');
     }
   };
 
-  const stopInteraction = async () => {
-    console.log('🛑 Stop button clicked!');
+  const handleStopInteraction = async () => {
     addLog('🛑 Stopping voice interaction');
     
-    try {
-      if (deepgramRef.current) {
+    if (deepgramRef.current) {
+      try {
         await deepgramRef.current.stop();
-        console.log('✅ stop() method completed successfully');
+        setIsRecording(false);
+      } catch (error) {
+        addLog(`Error stopping: ${(error as Error).message}`);
       }
-    } catch (error) {
-      addLog(`Error stopping: ${(error as Error).message}`);
-      console.error('Stop error:', error);
     }
-  };
-
-  const clearLogs = () => {
-    setLogs([]);
   };
 
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
-      <h1>🎙️ Deepgram Voice Interaction Test</h1>
-      
+    <div className="min-h-screen bg-gray-900 text-white p-8">
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-6">
+          <Link to="/" className="text-blue-400 hover:text-blue-300">← Back to Home</Link>
+        </div>
+
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-bold">Voice Interaction</h1>
+          <div className="flex items-center gap-4">
+            <div className="text-sm">
+              <span className="mr-2">Agent:</span>
+              <span className={`
+                ${agentState === 'idle' ? 'text-gray-400' : ''}
+                ${agentState === 'listening' ? 'text-green-400' : ''}
+                ${agentState === 'thinking' ? 'text-yellow-400' : ''}
+                ${agentState === 'speaking' ? 'text-blue-400' : ''}
+                ${agentState === 'sleeping' ? 'text-purple-400' : ''}
+              `}>
+                {agentState.charAt(0).toUpperCase() + agentState.slice(1)}
+              </span>
+            </div>
+            <div className="text-sm">
+              <span className="mr-2">Connection:</span>
+              <span className={`
+                ${connectionStates.agent === 'connected' ? 'text-green-400' : ''}
+                ${connectionStates.agent === 'connecting' ? 'text-yellow-400' : ''}
+                ${connectionStates.agent === 'disconnected' ? 'text-red-400' : ''}
+              `}>
+                {connectionStates.agent}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-2 gap-6">
+          {/* Left Column - Controls and Chat */}
+          <div className="space-y-6">
+            {/* Connection Controls */}
+            <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+              <h2 className="text-lg font-semibold mb-4">Connection Controls</h2>
+              
+              {/* Microphone Setup */}
+              {!microphoneEnabled ? (
+                <button
+                  onClick={enableMicrophoneWithPermissions}
+                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium transition-colors"
+                >
+                  🎤 Enable Microphone
+                </button>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span>Microphone Status:</span>
+                    <span className={microphonePermissions?.granted ? 'text-green-400' : 'text-red-400'}>
+                      {microphonePermissions?.granted ? '✅ Ready' : '❌ Not Ready'}
+                    </span>
+                  </div>
+                  
+                  <button
+                    onClick={isRecording ? handleStopInteraction : handleStartInteraction}
+                    disabled={!isReady || !microphonePermissions?.granted}
+                    className={`w-full px-4 py-2 rounded font-medium transition-colors ${
+                      isRecording
+                        ? 'bg-red-600 hover:bg-red-700'
+                        : 'bg-blue-600 hover:bg-blue-700'
+                    } disabled:bg-gray-600 disabled:cursor-not-allowed`}
+                  >
+                    {isRecording ? '⏹️ Stop Interaction' : '▶️ Start Interaction'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Chat Window */}
+            <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 h-[400px] flex flex-col">
+              <h2 className="text-lg font-semibold mb-4">Conversation</h2>
+              <div className="flex-1 overflow-y-auto space-y-4">
+                {chatMessages.map(message => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                        message.type === 'user'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-700 text-white'
+                      }`}
+                    >
+                      <p>{message.text}</p>
+                      <p className="text-xs opacity-50 mt-1">
+                        {message.timestamp.toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {lastTranscript && !chatMessages.find(m => m.text === lastTranscript) && (
+                  <div className="flex justify-end">
+                    <div className="max-w-[80%] rounded-lg px-4 py-2 bg-gray-700 text-gray-400 italic">
+                      {lastTranscript}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column - Activity Log */}
+          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Activity Log</h2>
+              <button
+                onClick={() => setLogs([])}
+                className="text-sm text-gray-400 hover:text-white transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="h-[600px] overflow-y-auto font-mono text-sm space-y-1">
+              {logs.map((log, index) => {
+                // Extract timestamp and message
+                const [timestamp, ...messageParts] = log.split(' - ');
+                const message = messageParts.join(' - ');
+
+                // Determine log type for styling
+                const getLogStyle = () => {
+                  const lowerMessage = message.toLowerCase();
+                  if (lowerMessage.includes('error')) return 'text-red-400';
+                  if (lowerMessage.includes('ready')) return 'text-green-400';
+                  if (lowerMessage.includes('connecting')) return 'text-yellow-400';
+                  if (lowerMessage.includes('connected')) return 'text-blue-400';
+                  if (lowerMessage.includes('initialized')) return 'text-purple-400';
+                  return 'text-gray-300';
+                };
+
+                return (
+                  <div key={index} className="flex items-start border-b border-gray-700 last:border-0 py-1">
+                    <span className="text-gray-500 shrink-0 mr-2">{timestamp}</span>
+                    <span className={getLogStyle()}>{message}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Hidden Component - Only render when microphone is enabled */}
+        {microphoneEnabled && (
       <DeepgramVoiceInteraction
         ref={deepgramRef}
         apiKey={import.meta.env.VITE_DEEPGRAM_API_KEY || ''}
@@ -301,163 +461,7 @@ function VoiceInteractionPage() {
         onMicrophoneData={handleMicrophoneData}
         debug={true}
       />
-      
-      {/* Component States */}
-      <div style={{ border: '1px solid blue', padding: '10px', margin: '15px 0' }}>
-        <h4>Component States:</h4>
-        <p>App UI State (isSleeping): <strong>{(isSleeping || agentState === 'entering_sleep').toString()}</strong></p>
-        <p>Core Component State (agentState via callback): <strong>{agentState}</strong></p>
-        <p>Transcription Connection: <strong>{connectionStates.transcription}</strong></p>
-        <p>Agent Connection: <strong>{connectionStates.agent}</strong></p>
-        <p>Audio Recording: <strong>{isRecording.toString()}</strong></p>
-        <p>Audio Playing: <strong>{isPlaying.toString()}</strong></p>
-      </div>
-
-      {/* Microphone Controls */}
-      <div style={{ border: '1px solid green', padding: '10px', margin: '15px 0' }}>
-        <h4>🎤 Microphone Controls:</h4>
-        
-        {!microphoneEnabled ? (
-          <div>
-            <p>Status: <strong style={{ color: 'orange' }}>Not Enabled</strong></p>
-            <p>Click the button below to enable microphone and request permissions:</p>
-            <button onClick={enableMicrophoneWithPermissions} style={{ 
-              padding: '10px 20px', 
-              backgroundColor: '#4CAF50', 
-              color: 'white', 
-              border: 'none', 
-              borderRadius: '5px',
-              fontSize: '16px',
-              cursor: 'pointer'
-            }}>
-              🎤 Enable Microphone & Grant Permissions
-            </button>
-          </div>
-        ) : (
-          <div>
-            <p>Status: <strong style={{ color: microphonePermissions?.granted ? 'green' : 'orange' }}>
-              {microphonePermissions?.granted ? '✅ Ready to Use' : '⏳ Permissions Needed'}
-            </strong></p>
-            
-            <div style={{ margin: '10px 0', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button 
-                onClick={startMicrophoneRecording} 
-                disabled={!isReady || !microphonePermissions?.granted} 
-                style={{ 
-                  padding: '8px 16px',
-                  backgroundColor: microphonePermissions?.granted ? '#4CAF50' : '#ccc',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: microphonePermissions?.granted ? 'pointer' : 'not-allowed'
-                }}
-              >
-                🎙️ Start Recording
-              </button>
-              
-              <button 
-                onClick={stopMicrophoneRecording} 
-                style={{ 
-                  padding: '8px 16px',
-                  backgroundColor: '#f44336',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                ⏹️ Stop Recording
-              </button>
-            </div>
-          </div>
         )}
-      </div>
-      
-      {/* Main Controls */}
-      <div style={{ margin: '20px 0', display: 'flex', gap: '10px' }}>
-        {!isRecording ? (
-          <button 
-            onClick={startInteraction} 
-            disabled={!isReady || isRecording}
-            style={{ padding: '10px 20px' }}
-          >
-            Start Voice Interaction
-          </button>
-        ) : (
-          <button 
-            onClick={stopInteraction} 
-            disabled={!isReady}
-            style={{ padding: '10px 20px' }}
-          >
-            Stop Voice Interaction
-          </button>
-        )}
-      </div>
-
-      {/* Response Display */}
-      <div style={{ margin: '20px 0' }}>
-        <div style={{ marginBottom: '10px' }}>
-          <strong>Last Transcript:</strong>
-          <div style={{ 
-            border: '1px solid #ccc', 
-            padding: '10px', 
-            minHeight: '40px', 
-            backgroundColor: '#f9f9f9',
-            fontStyle: lastTranscript ? 'normal' : 'italic',
-            color: lastTranscript ? 'black' : '#666'
-          }}>
-            {lastTranscript || 'No transcript yet...'}
-          </div>
-        </div>
-        
-        <div style={{ marginBottom: '10px' }}>
-          <strong>Agent Response:</strong>
-          <div style={{ 
-            border: '1px solid #ccc', 
-            padding: '10px', 
-            minHeight: '40px', 
-            backgroundColor: '#f0f8ff',
-            fontStyle: agentResponse ? 'normal' : 'italic',
-            color: agentResponse ? 'black' : '#666'
-          }}>
-            {agentResponse || 'No agent response yet...'}
-          </div>
-        </div>
-        
-        <div style={{ marginBottom: '10px' }}>
-          <strong>User Message:</strong>
-          <div style={{ 
-            border: '1px solid #ccc', 
-            padding: '10px', 
-            minHeight: '40px', 
-            backgroundColor: '#f0fff0',
-            fontStyle: userMessage ? 'normal' : 'italic',
-            color: userMessage ? 'black' : '#666'
-          }}>
-            {userMessage || 'No user message yet...'}
-          </div>
-        </div>
-      </div>
-
-      {/* Logs */}
-      <div style={{ margin: '20px 0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h4>Activity Logs:</h4>
-          <button onClick={clearLogs} style={{ padding: '5px 10px' }}>Clear Logs</button>
-        </div>
-        <div style={{ 
-          border: '1px solid #ccc', 
-          padding: '10px', 
-          height: '200px', 
-          overflowY: 'scroll', 
-          backgroundColor: '#f8f8f8',
-          fontFamily: 'monospace',
-          fontSize: '12px'
-        }}>
-          {logs.map((log, index) => (
-            <div key={index}>{log}</div>
-          ))}
-        </div>
       </div>
     </div>
   );

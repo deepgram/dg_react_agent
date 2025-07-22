@@ -2,6 +2,7 @@
 export * from './agent';
 export * from './transcription';
 export * from './voiceBot';
+export * from './error';
 
 // Core voice interaction types
 import { ConnectionState, EndpointConfig } from '../common/connection';

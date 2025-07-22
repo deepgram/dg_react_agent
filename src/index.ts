@@ -4,11 +4,11 @@
  * A React component library for integrating with Deepgram's voice agent and transcription services
  */
 
-// Voice Interaction Components
-export { DeepgramVoiceInteraction, DeepgramWrapper, DeepgramErrorBoundary } from './components/DeepgramVoiceInteraction';
-
 // TTS functionality
 export { useDeepgramTTS } from './components/DeepgramTTS';
+
+// Voice Interaction functionality
+export { useDeepgramVoiceInteraction, DeepgramWrapper, DeepgramErrorBoundary } from './components/DeepgramVoiceInteraction';
 
 // Voice Types
 export type {
@@ -25,16 +25,30 @@ export type {
 // TTS Types
 export type {
   DeepgramTTSOptions,
-  TTSMetrics,
   TTSError,
+  TTSMetrics,
   DeepgramTTSMessage,
   DeepgramTTSResponse
 } from './types/tts';
 
 // Common Types
-export type { ConnectionState } from './types/common/connection';
-export type { AudioChunk } from './types/common/audio';
-export type { DeepgramError } from './types/common/error';
+export type {
+  ConnectionState,
+  WebSocketManagerOptions,
+  WebSocketEventHandlers
+} from './types/common/connection';
+
+export type {
+  AudioError,
+  ConnectionError,
+  DeepgramError
+} from './types/common/error';
+
+export type {
+  MicrophoneConfig,
+  MicrophoneState,
+  MicrophoneEventHandlers
+} from './types/common/microphone';
 
 // Utils
 export { AudioManager } from './utils/audio/AudioManager';

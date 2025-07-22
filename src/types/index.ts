@@ -3,5 +3,7 @@ export * from './voice';
 export * from './tts';
 export * from './common/audio';
 export * from './common/connection';
-export * from './common/error';
-export * from './common/microphone'; 
+export * from './common/microphone';
+
+// Re-export error types except VoiceError (already exported from ./voice)
+export type { AudioError, ConnectionError, APIError, DeepgramError } from './common/error'; 

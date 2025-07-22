@@ -2,10 +2,10 @@
 
 import React from 'react';
 import type { DeepgramVoiceInteractionProps } from './types';
-import DeepgramVoiceInteraction from '../../core';
+import { useDeepgramVoiceInteraction } from '../../hooks/useDeepgramVoiceInteraction';
 
 /**
- * Next.js wrapper for DeepgramVoiceInteraction
+ * Next.js wrapper for useDeepgramVoiceInteraction hook
  * This component handles SSR compatibility and provides a safe loading state
  */
 export const DeepgramWrapper: React.FC<DeepgramVoiceInteractionProps> = (props: DeepgramVoiceInteractionProps) => {
@@ -20,5 +20,25 @@ export const DeepgramWrapper: React.FC<DeepgramVoiceInteractionProps> = (props: 
     return null; // Or return a loading placeholder
   }
 
-  return <DeepgramVoiceInteraction {...props} />;
+  // Use the hook
+  useDeepgramVoiceInteraction(props.apiKey, {
+    transcriptionOptions: props.transcriptionOptions,
+    agentOptions: props.agentOptions,
+    endpointOverrides: props.endpointConfig,
+    microphoneConfig: props.microphoneConfig,
+    debug: props.debug,
+    onReady: props.onReady,
+    onConnectionStateChange: props.onConnectionStateChange,
+    onTranscriptUpdate: props.onTranscriptUpdate,
+    onAgentStateChange: props.onAgentStateChange,
+    onAgentUtterance: props.onAgentUtterance,
+    onUserMessage: props.onUserMessage,
+    onUserStartedSpeaking: props.onUserStartedSpeaking,
+    onUserStoppedSpeaking: props.onUserStoppedSpeaking,
+    onPlaybackStateChange: props.onPlaybackStateChange,
+    onMicrophoneData: props.onMicrophoneData,
+    onError: props.onError
+  });
+
+  return null; // Headless component
 };
