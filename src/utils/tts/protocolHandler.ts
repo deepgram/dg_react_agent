@@ -7,15 +7,22 @@ interface ProtocolHandlerOptions {
 }
 
 export class ProtocolHandler {
-  constructor(private options: ProtocolHandlerOptions = {}) {}
+  private debug: boolean;
+  private chunkCount = 0;
 
+  constructor(options: ProtocolHandlerOptions = {}) {
+    this.debug = options.debug || false;
+  }
 
+  private log(message: string): void {
+    if (this.debug) {
+      console.log(`[ProtocolHandler] ${message}`);
+    }
+  }
 
   public createSpeakMessage(text: string): DeepgramTTSMessage {
-    if (this.options.debug) {
-      console.log('[ProtocolHandler] Creating speak message for text:', text);
-    }
-    
+    this.chunkCount++;
+    this.log(`Creating speak message from chunk ${this.chunkCount}`);
     return {
       type: 'Speak',
       text

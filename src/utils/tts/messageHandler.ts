@@ -11,9 +11,20 @@ interface MessageHandlerOptions {
 export class MessageHandler {
   private handlers: MessageHandlerOptions;
   private sequenceId = 0;
+  private totalBytesReceived = 0;
+  private chunkCount = 0;
+  private isProcessingStream = false;
 
   constructor(options: MessageHandlerOptions = {}) {
     this.handlers = options;
+  }
+
+  public setOnComplete(handler: () => void): void {
+    this.log('Setting completion handler');
+    this.handlers.onComplete = () => {
+      this.log('Calling completion handler');
+      handler();
+    };
   }
 
   private log(message: string): void {
@@ -27,6 +38,14 @@ export class MessageHandler {
       if (message.byteLength === 0) {
         return;
       }
+
+      // Only process audio chunks if we're not flushed
+      if (!this.isProcessingStream) {
+        this.isProcessingStream = true;
+      }
+
+      this.chunkCount++;
+      this.totalBytesReceived += message.byteLength;
 
       const audioChunk: AudioChunk = {
         data: message,
@@ -50,6 +69,18 @@ export class MessageHandler {
     }
 
     if (message.type === 'Complete') {
+      this.log(`Audio stream complete. Total: ${this.totalBytesReceived} bytes in ${this.chunkCount} chunks`);
+      this.handlers.onComplete?.();
+      // Reset counters for next stream
+      this.resetSequence();
+      return;
+    }
+
+    if (message.type === 'Flushed') {
+      this.log('Previous audio stream flushed');
+      // Reset state for the new stream
+      this.resetSequence();
+      this.isProcessingStream = false;
       this.handlers.onComplete?.();
       return;
     }

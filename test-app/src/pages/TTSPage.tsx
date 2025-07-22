@@ -3,19 +3,19 @@ import { useDeepgramTTS } from 'deepgram-tts-react';
 
 function TTSPage() {
   const [inputText, setInputText] = useState('Hello! This is a test of Deepgram text-to-speech functionality.');
-  const [isLoading, setIsLoading] = useState(false);
 
   // Use the proper TTS hook from the src package
   const {
     speak,
     isConnected,
     isReady,
+    isLoading,
     error,
     disconnect
   } = useDeepgramTTS(
     import.meta.env.VITE_DEEPGRAM_API_KEY || '',
     {
-      debug: true,
+      debug: 'verbose',
       enableMetrics: true
     }
   );
@@ -31,15 +31,11 @@ function TTSPage() {
       return;
     }
 
-    setIsLoading(true);
-    
     try {
       await speak(inputText.trim());
     } catch (error) {
       console.error('Speak failed:', error);
       alert(`Speak failed: ${(error as Error).message}`);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -66,7 +62,7 @@ function TTSPage() {
             Status: {getStatusText()}
           </div>
         </div>
-        
+
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
           <label className="block text-sm font-medium mb-2">
             Text to Speak
@@ -83,8 +79,8 @@ function TTSPage() {
             <div className="text-sm text-gray-400">
               {inputText.length} characters
             </div>
-            
-            <button 
+
+            <button
               onClick={handleSpeak}
               disabled={!inputText.trim() || !isReady || isLoading}
               className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-white font-medium transition-colors flex items-center gap-2"
@@ -115,13 +111,6 @@ function TTSPage() {
             </div>
           </div>
         )}
-
-        {/* Info */}
-        <div className="mt-6 bg-gray-800 border border-gray-700 rounded-lg p-4">
-          <p className="text-sm text-gray-400">
-            💡 Make sure you have your <code className="px-1 py-0.5 bg-gray-700 rounded text-gray-300">VITE_DEEPGRAM_API_KEY</code> environment variable configured.
-          </p>
-        </div>
       </div>
     </div>
   );
