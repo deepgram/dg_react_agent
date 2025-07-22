@@ -38,6 +38,26 @@ This is a comprehensive test application for the Deepgram React Components libra
 4. **Open in Browser**
    Navigate to `http://localhost:5173`
 
+## Running with Docker
+
+The application appears to need `VITE_DEEPGRAM_API_KEY` set for both build and runtime.
+```sh
+# You need to be at the root directory since the test-app looks for resources there, and that's just the easiest with fly.io
+# Build the image
+docker image build --secret id=VITE_DEEPGRAM_API_KEY,env=$DG_TOKEN -t <image_name:tag> . 
+
+# Run the image
+docker run --rm --name=dgreact -e VITE_DEEPGRAM_API_KEY:$DG_TOKEN -p 8080:80 <image_name:tag>
+```
+
+## Deploy with fly.io
+```sh
+# Add runtime secrets
+fly secrets set VITE_DEEPGRAM_API_KEY=$DG_TOKEN                            │
+# Deploy with build secret
+fly deploy --build-secret VITE_DEEPGRAM_API_KEY=$DG_TOKEN  
+```
+
 ## Usage Examples
 
 The Deepgram Agent component supports comprehensive voice interaction capabilities, demonstrated in this application:

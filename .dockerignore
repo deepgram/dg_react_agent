@@ -1,0 +1,6 @@
+*.tgz
+.git/
+.rollup.cache/
+.husky/
+node_modules/
+.env

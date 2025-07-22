@@ -1,9 +1,6 @@
 app = "deepgram-tts-demo"
 primary_region = "sjc"
 
-[build]
-  dockerfile = "Dockerfile"
-
 [env]
   PORT = "80"
 
