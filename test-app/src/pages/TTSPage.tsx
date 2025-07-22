@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useDeepgramTTS } from '../../../src';
+import { useDeepgramTTS } from 'deepgram-tts-react';
 
 function TTSPage() {
-  const navigate = useNavigate();
   const [inputText, setInputText] = useState('Hello! This is a test of Deepgram text-to-speech functionality.');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -21,11 +19,6 @@ function TTSPage() {
       enableMetrics: true
     }
   );
-
-  const handleNavigateHome = () => {
-    disconnect();
-    navigate('/');
-  };
 
   const handleSpeak = async () => {
     if (!inputText.trim()) {
@@ -67,12 +60,8 @@ function TTSPage() {
   return (
     <div className="min-h-screen bg-gray-900 text-white p-8">
       <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
-          <button onClick={handleNavigateHome} className="text-blue-400 hover:text-blue-300">← Back to Home</button>
-        </div>
-        
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold">Text-to-Speech</h1>
+          <h1 className="text-3xl font-bold">Text-to-Speech Demo</h1>
           <div className={`text-sm ${getStatusColor()}`}>
             Status: {getStatusText()}
           </div>

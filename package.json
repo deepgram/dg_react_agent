@@ -1,7 +1,7 @@
 {
-  "name": "deepgram-voice-interaction-react",
+  "name": "deepgram-tts-react",
   "version": "0.1.0",
-  "description": "A React component for real-time transcription and voice agent interactions using Deepgram APIs",
+  "description": "A React hook for real-time text-to-speech using Deepgram's TTS API",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
@@ -19,20 +19,17 @@
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
-    "prepare": "husky install",
-    "build:single-file": "node scripts/generate-single-file.js"
+    "prepare": "husky install"
   },
   "keywords": [
     "deepgram",
-    "voice",
-    "transcription",
-    "agent",
+    "tts",
+    "text-to-speech",
     "react",
     "nextjs",
     "audio",
     "speech",
     "ai",
-    "voice-assistant",
     "real-time",
     "websocket",
     "typescript"
@@ -74,7 +71,6 @@
     "rollup": "^2.75.6",
     "rollup-plugin-cleaner": "^1.0.0",
     "rollup-plugin-peer-deps-external": "^2.2.4",
-    "rollup-plugin-raw": "^0.0.1",
     "rollup-plugin-terser": "^7.0.2",
     "ts-jest": "^28.0.4",
     "typescript": "^4.7.3"

@@ -1,7 +1,6 @@
-// Re-export all types
-export * from './voice';
+// Re-export TTS types
 export * from './tts';
 export * from './common/audio';
 export * from './common/connection';
-export * from './common/microphone';
+export * from './common/error';
 //# sourceMappingURL=index.js.map
