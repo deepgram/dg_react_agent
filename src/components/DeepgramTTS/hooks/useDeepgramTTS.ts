@@ -8,16 +8,15 @@ import { AudioOutputManager } from '../../../utils/audio/AudioOutputManager';
 import { MetricsCollector } from '../../../utils/tts/metricsCollector';
 import { TTSWebSocketManager } from '../../../utils/websocket/TTSWebSocketManager';
 import { AudioError } from '../../../types/common/error';
+import { splitIntoChunks } from '../../../utils/tts/TextChunker';
 import {
   AUDIO_CONFIG,
   WEBSOCKET_CONFIG,
   MODEL_CONFIG,
-  DEBUG_CONFIG,
   METRICS_CONFIG,
   mergeConfig,
   BaseComponentConfig
 } from '../../../utils/shared/config';
-import { splitIntoChunks } from '../../../utils/tts/TextChunker';
 
 interface TTSConfig extends BaseComponentConfig {
   enableTextChunking?: boolean;

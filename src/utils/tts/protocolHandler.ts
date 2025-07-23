@@ -8,7 +8,6 @@ interface ProtocolHandlerOptions {
 
 export class ProtocolHandler {
   private debug: boolean;
-  private chunkCount = 0;
 
   constructor(options: ProtocolHandlerOptions = {}) {
     this.debug = options.debug || false;

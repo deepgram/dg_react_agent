@@ -2,4 +2,13 @@
 export * from './tts';
 export * from './common/audio';
 export * from './common/connection';
-export * from './common/error'; 
+export { 
+  BaseError, 
+  ConnectionError, 
+  AudioError, 
+  APIError, 
+  DeepgramError,
+  type ConnectionErrorDetails,
+  type AudioErrorDetails,
+  type APIErrorDetails
+} from './common/error'; 

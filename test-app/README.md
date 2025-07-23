@@ -1,21 +1,15 @@
-# Deepgram React Components Test App
+# Deepgram TTS React - Test App
 
-This is a comprehensive test application for the Deepgram React Components library, demonstrating various usage patterns and configurations.
+This is a test application for the Deepgram TTS React library, demonstrating real-time text-to-speech functionality.
 
 ## Features Demonstrated
 
 ### Text-to-Speech (TTS)
-- Basic text-to-speech conversion
-- Real-time audio playback
-- Error handling
-- Performance optimization
-
-### Voice Agent
-- Interactive voice conversations
-- Real-time transcription
-- Agent state management
-- Microphone configuration
-- WebSocket connection handling
+- Real-time text-to-speech conversion
+- Intelligent text chunking for long texts
+- Seamless audio playback
+- Error handling and connection management
+- Performance metrics tracking
 
 ## Getting Started
 
@@ -40,70 +34,60 @@ This is a comprehensive test application for the Deepgram React Components libra
 
 ## Running with Docker
 
-The application appears to need `VITE_DEEPGRAM_API_KEY` set for both build and runtime.
 ```sh
-# You need to be at the root directory since the test-app looks for resources there, and that's just the easiest with fly.io
-# Build the image
-docker image build --secret id=VITE_DEEPGRAM_API_KEY,env=$DG_TOKEN -t <image_name:tag> . 
+# Build the image (from project root)
+docker image build --secret id=VITE_DEEPGRAM_API_KEY,env=$DG_TOKEN -t deepgram-tts-demo . 
 
 # Run the image
-docker run --rm --name=dgreact -e VITE_DEEPGRAM_API_KEY:$DG_TOKEN -p 8080:80 <image_name:tag>
+docker run --rm --name=dgtts -e VITE_DEEPGRAM_API_KEY:$DG_TOKEN -p 8080:80 deepgram-tts-demo
 ```
 
 ## Deploy with fly.io
+
 ```sh
 # Add runtime secrets
-fly secrets set VITE_DEEPGRAM_API_KEY=$DG_TOKEN                            │
+fly secrets set VITE_DEEPGRAM_API_KEY=$DG_TOKEN
 # Deploy with build secret
 fly deploy --build-secret VITE_DEEPGRAM_API_KEY=$DG_TOKEN  
 ```
 
 ## Usage Examples
 
-The Deepgram Agent component supports comprehensive voice interaction capabilities, demonstrated in this application:
-
-### Basic Agent Setup
+### Basic TTS Setup
 ```tsx
-import { useDeepgramAgent } from 'deepgram-voice-interaction-react';
+import { useDeepgramTTS } from 'deepgram-tts-react';
 
-const { start, stop, isReady, isRecording } = useDeepgramAgent({
+const { speak, stop, isLoading, isConnected, error } = useDeepgramTTS({
   apiKey: 'YOUR_API_KEY',
-  onAgentUtterance: (response) => console.log('Agent:', response.text),
-  onUserMessage: (message) => console.log('User:', message.text)
+  debug: 'verbose',
+  enableMetrics: true
 });
+
+// Convert text to speech
+await speak('Hello, this is Deepgram TTS!');
 ```
 
 ### Advanced Configuration
 ```tsx
-const { start, stop, agentState } = useDeepgramAgent({
+const { speak, metrics } = useDeepgramTTS({
   apiKey: 'YOUR_API_KEY',
-  agentOptions: {
-    language: 'en',
-    voice: 'aura-asteria-en',
-    instructions: 'You are a helpful assistant.',
-    greeting: 'Hello! How can I help you today?'
-  },
-  debug: true,
-  onAgentStateChange: (state) => console.log('State:', state),
-  onError: (error) => console.error('Error:', error)
+  model: 'aura-2-apollo-en',
+  enableTextChunking: true,
+  maxChunkSize: 200,
+  onError: (error) => console.error('TTS Error:', error),
+  onMetrics: (metrics) => console.log('Performance:', metrics)
 });
 ```
 
-### Custom Microphone Configuration
+### Handling Long Texts
 ```tsx
-const { start, stop } = useDeepgramAgent({
-  apiKey: 'YOUR_API_KEY',
-  microphoneConfig: {
-    constraints: {
-      sampleRate: 48000,
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true
-    },
-    bufferSize: 4096
-  }
-});
+// The hook automatically chunks long texts
+const longText = `
+  This is a very long document that will be automatically
+  split into manageable chunks for smooth playback...
+`;
+
+await speak(longText);
 ```
 
 ## Project Structure
@@ -112,8 +96,7 @@ const { start, stop } = useDeepgramAgent({
 test-app/
 ├── src/
 │   ├── pages/
-│   │   ├── AgentPage.tsx      # Voice agent demonstration
-│   │   └── TTSPage.tsx        # Text-to-speech demonstration
+│   │   └── TTSPage.tsx        # TTS demonstration
 │   ├── App.tsx                # Main application component
 │   └── main.tsx              # Application entry point
 ├── public/
@@ -132,48 +115,79 @@ test-app/
 ### Error Handling
 - Test with invalid API keys
 - Test network disconnections
-- Test microphone permission denial
+- Test with very long texts
 
 ### Performance Testing
-- Long conversations
-- Rapid start/stop cycles
-- Multiple simultaneous connections
+- Test with different chunk sizes
+- Monitor metrics for optimization
+- Test rapid speak/stop cycles
 
 ### Browser Compatibility
 - Test across different browsers
 - Test on mobile devices
-- Test with different microphone setups
+- Test with different audio setups
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Microphone not working**
-   - Ensure browser has microphone permissions
-   - Check microphone configuration
-   - Verify HTTPS connection (required for microphone access)
+1. **API Key Issues**
+   - Ensure your API key is valid
+   - Check that it has TTS permissions
+   - Verify environment variable is set correctly
 
-2. **WebSocket connection failures**
-   - Verify API key is correct
-   - Check network connectivity
-   - Ensure firewall allows WebSocket connections
-
-3. **Audio playback issues**
+2. **Audio Playback Issues**
    - Check browser audio permissions
-   - Verify audio output device
-   - Test with different browsers
+   - Ensure Web Audio API is supported
+   - Try different browsers if issues persist
+
+3. **Connection Problems**
+   - Check network connectivity
+   - Verify WebSocket support
+   - Monitor browser console for errors
+
+4. **Performance Issues**
+   - Adjust chunk size for your use case
+   - Enable metrics to identify bottlenecks
+   - Consider text length and complexity
+
+### Debug Modes
+
+Use different debug levels to troubleshoot:
+- `debug: 'hook'` - Hook-level events
+- `debug: 'manager'` - Manager-level events  
+- `debug: 'verbose'` - All debug information
+
+## Features Showcase
+
+The test app demonstrates:
+
+1. **Basic TTS Functionality**
+   - Simple text-to-speech conversion
+   - Start/stop controls
+   - Connection status display
+
+2. **Advanced Features**
+   - Automatic text chunking
+   - Performance metrics
+   - Error handling
+   - Debug logging
+
+3. **UI Best Practices**
+   - Loading states
+   - Error displays
+   - Connection indicators
+   - Responsive design
 
 ## Contributing
 
-When adding new test cases or examples:
+To contribute to the test app:
 
-1. Follow the existing code structure
-2. Add comprehensive error handling
-3. Include debug logging
-4. Test across different browsers
-5. Update documentation
+1. Fork the repository
+2. Make your changes
+3. Test thoroughly
+4. Submit a pull request
 
-## Support
+## License
 
-For issues specific to this test app, please open an issue in the main repository.
-For Deepgram API issues, contact [Deepgram Support](https://deepgram.com/support).
+This test application is part of the Deepgram TTS React package and is licensed under the MIT License.

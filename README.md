@@ -1,186 +1,344 @@
-# Deepgram Text-to-Speech React
+# Deepgram TTS React
 
-A React hook for real-time text-to-speech using Deepgram's TTS API with ultra-low latency streaming.
+A production-ready React hook for real-time text-to-speech using Deepgram's TTS API. Features intelligent text chunking, queue management, and seamless audio playback.
 
 ## Features
 
-- Real-time text-to-speech streaming
-- Support for multiple voices
-- Next.js compatibility with SSR support
-- TypeScript support
-- Comprehensive error handling
-- Extensive customization options
-- Performance metrics tracking
+- 🎯 **Simple Integration**: Single React hook for TTS functionality
+- 🔄 **Intelligent Chunking**: Automatically splits large texts while preserving sentence boundaries
+- 📦 **Queue Management**: Sequential chunk processing with rate limiting
+- 🎵 **Seamless Playback**: Smooth audio transitions using Web Audio API
+- ⚡ **Real-time Streaming**: WebSocket-based streaming for low latency
+- 🛡️ **Production Ready**: Comprehensive error handling and connection management
+- 📊 **Built-in Metrics**: Optional performance tracking and analytics
+- 🎛️ **Configurable**: Extensive customization options
 
 ## Installation
 
 ```bash
 npm install deepgram-tts-react
-# or
-yarn add deepgram-tts-react
 ```
 
 ## Quick Start
 
 ```tsx
+import React, { useState } from 'react';
 import { useDeepgramTTS } from 'deepgram-tts-react';
 
-function App() {
-  const tts = useDeepgramTTS(process.env.REACT_APP_DEEPGRAM_API_KEY, {
-    model: 'aura-2-thalia-en',
-    enableMetrics: true
+function TTSDemo() {
+  const [text, setText] = useState('');
+  
+  const { speak, stop, isLoading, isConnected, error } = useDeepgramTTS({
+    apiKey: 'your-deepgram-api-key'
   });
 
   const handleSpeak = async () => {
-    await tts.speak('Hello, this is Deepgram TTS!');
+    try {
+      await speak(text);
+      console.log('Speech completed!');
+    } catch (err) {
+      console.error('Speech failed:', err);
+    }
   };
 
   return (
-    <button onClick={handleSpeak} disabled={!tts.isConnected}>
-      {tts.isConnected ? 'Speak' : 'Connecting...'}
-    </button>
+    <div>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Enter text to speak..."
+        rows={4}
+        cols={50}
+      />
+      <div>
+        <button onClick={handleSpeak} disabled={isLoading || !isConnected}>
+          {isLoading ? 'Speaking...' : 'Speak'}
+        </button>
+        <button onClick={stop} disabled={!isLoading}>
+          Stop
+        </button>
+      </div>
+      {error && <p style={{ color: 'red' }}>Error: {error.message}</p>}
+      <p>Status: {isConnected ? 'Connected' : 'Disconnected'}</p>
+    </div>
   );
 }
 ```
 
-## Usage
+## API Reference
 
-### Basic Usage
+### useDeepgramTTS(options)
 
-```tsx
-const tts = useDeepgramTTS(apiKey);
-await tts.speak('Hello world!');
-```
+The main hook for TTS functionality.
 
-### Streaming Mode (for LLM Integration)
+#### Parameters
 
 ```tsx
-const tts = useDeepgramTTS(apiKey);
-
-// Initialize streaming
-await tts.initializeStreaming();
-
-// Stream text chunks as they arrive
-for (const chunk of streamingResponse) {
-  await tts.streamText(chunk);
+interface DeepgramTTSOptions {
+  apiKey: string;                    // Your Deepgram API key
+  model?: string;                    // TTS model (default: 'aura-2-thalia-en')
+  debug?: boolean | DebugLevel;      // Debug logging level
+  enableMetrics?: boolean;           // Enable performance metrics
+  enableTextChunking?: boolean;      // Enable automatic text chunking
+  maxChunkSize?: number;            // Maximum characters per chunk
+  onConnectionChange?: (state: ConnectionState) => void;
+  onError?: (error: TTSError) => void;
+  onMetrics?: (metrics: TTSMetrics) => void;
 }
 
-// Flush when complete
-await tts.flushStream();
+type DebugLevel = 'off' | 'hook' | 'manager' | 'verbose';
+type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
 ```
 
-### With Error Handling
+#### Return Value
 
 ```tsx
-const tts = useDeepgramTTS(apiKey, {
-  onError: (error) => console.error('TTS Error:', error),
-  onConnectionChange: (connected) => console.log('Connected:', connected)
+interface DeepgramTTSReturn {
+  speak: (text: string) => Promise<void>;     // Convert text to speech
+  stop: () => void;                           // Stop current speech
+  isLoading: boolean;                         // Is currently speaking
+  isConnected: boolean;                       // WebSocket connection status
+  connectionState: ConnectionState;           // Detailed connection state
+  error: TTSError | null;                    // Last error encountered
+  metrics: TTSMetrics | null;                // Performance metrics
+}
+```
+
+## Configuration Options
+
+### Text Chunking
+
+The hook automatically splits large texts into manageable chunks to ensure smooth playback and respect API rate limits.
+
+```tsx
+const { speak } = useDeepgramTTS({
+  apiKey: 'your-api-key',
+  enableTextChunking: true,    // Enable chunking (default: true)
+  maxChunkSize: 150,          // Characters per chunk (default: 150)
+});
+
+// This will be automatically chunked:
+await speak("This is a very long text that will be automatically split into smaller chunks to ensure smooth playback and optimal performance...");
+```
+
+### Debug Levels
+
+Control the verbosity of debug logging:
+
+```tsx
+const { speak } = useDeepgramTTS({
+  apiKey: 'your-api-key',
+  debug: 'verbose',  // 'off' | 'hook' | 'manager' | 'verbose'
 });
 ```
 
-### With Performance Metrics
+- `'off'`: No debug output
+- `'hook'`: Hook-level events only
+- `'manager'`: Hook + manager events
+- `'verbose'`: All debug information
+
+### Error Handling
 
 ```tsx
-const tts = useDeepgramTTS(apiKey, {
-  enableMetrics: true,
-  onMetrics: (metrics) => {
-    console.log('First byte latency:', metrics.firstByteLatency);
-    console.log('Total duration:', metrics.totalDuration);
+const { speak, error } = useDeepgramTTS({
+  apiKey: 'your-api-key',
+  onError: (error) => {
+    console.error('TTS Error:', error.message);
+    
+    // Handle specific error types
+    switch (error.type) {
+      case 'connection':
+        console.log('Connection issue - will retry automatically');
+        break;
+      case 'audio':
+        console.log('Audio playback issue');
+        break;
+      case 'api':
+        console.log('API error - check your key and usage');
+        break;
+      case 'tts':
+        console.log('TTS processing error');
+        break;
+    }
   }
 });
 ```
 
-## API Reference
+### Performance Metrics
 
-### useDeepgramTTS Options
+Track performance and usage metrics:
 
-```typescript
-interface TTSConfig {
-  model?: string;                // TTS model to use
-  debug?: boolean | 'verbose';   // Enable debug logging
-  enableMetrics?: boolean;       // Enable performance tracking
-  enableTextChunking?: boolean;  // Enable text chunking for long inputs
-  maxChunkSize?: number;         // Maximum chunk size for text chunking
-  onError?: (error: TTSError) => void;
-  onConnectionChange?: (connected: boolean) => void;
-  onMetrics?: (metrics: TTSMetrics) => void;
-}
+```tsx
+const { speak, metrics } = useDeepgramTTS({
+  apiKey: 'your-api-key',
+  enableMetrics: true,
+  onMetrics: (metrics) => {
+    console.log('Performance metrics:', {
+      totalCharacters: metrics.totalCharacters,
+      totalChunks: metrics.totalChunks,
+      averageLatency: metrics.averageLatency,
+      totalAudioDuration: metrics.totalAudioDuration,
+    });
+  }
+});
 ```
 
-### Return Value
+## Advanced Usage
 
-```typescript
-interface UseDeepgramTTSReturn {
-  speak: (text: string) => Promise<void>;
-  streamText: (text: string) => Promise<void>;
-  flushStream: () => Promise<void>;
-  stop: () => void;
-  clear: () => Promise<void>;
-  disconnect: () => void;
-  isPlaying: boolean;
-  isConnected: boolean;
-  isReady: boolean;
-  error: TTSError | null;
-  metrics: TTSMetrics | null;
-}
+### Custom Voice Models
+
+```tsx
+const { speak } = useDeepgramTTS({
+  apiKey: 'your-api-key',
+  model: 'aura-2-apollo-en',  // Male voice
+  // model: 'aura-2-athena-en',  // Alternative female voice
+});
 ```
 
-## Error Handling
+### Connection State Management
 
-The hook provides comprehensive error handling through the `TTSError` type:
+```tsx
+const { speak, connectionState } = useDeepgramTTS({
+  apiKey: 'your-api-key',
+  onConnectionChange: (state) => {
+    switch (state) {
+      case 'connecting':
+        console.log('Establishing connection...');
+        break;
+      case 'connected':
+        console.log('Ready for TTS requests');
+        break;
+      case 'disconnected':
+        console.log('Connection lost - will reconnect automatically');
+        break;
+      case 'error':
+        console.log('Connection error occurred');
+        break;
+    }
+  }
+});
+```
 
-```typescript
-type TTSError = {
-  code: string;
-  message: string;
-  details?: any;
-};
+### Handling Long Texts
+
+The hook automatically handles long texts by chunking them appropriately:
+
+```tsx
+const { speak } = useDeepgramTTS({
+  apiKey: 'your-api-key',
+  maxChunkSize: 200,  // Larger chunks for longer texts
+});
+
+// Automatically chunked and queued
+const longText = `
+  This is a very long document that contains multiple paragraphs and sentences.
+  The hook will automatically split this into appropriate chunks while preserving
+  sentence boundaries to ensure natural speech flow. Each chunk will be processed
+  sequentially with proper timing to avoid rate limits and ensure smooth playback.
+`;
+
+await speak(longText);
+```
+
+## Error Types
+
+The hook provides detailed error information:
+
+```tsx
+interface TTSError {
+  name: string;           // Error class name
+  message: string;        // Human-readable message
+  type: 'connection' | 'audio' | 'api' | 'tts';
+  code: string;          // Error code for programmatic handling
+  details?: object;      // Additional error context
+}
 ```
 
 Common error scenarios:
-- Connection failures
-- Invalid API key
-- Audio playback issues
-- Invalid text input
+- **Connection errors**: Network issues, WebSocket failures
+- **Audio errors**: Web Audio API issues, playback failures
+- **API errors**: Invalid API key, rate limits, service unavailable
+- **TTS errors**: Text processing issues, model unavailable
 
-## Performance Metrics
+## TypeScript Support
 
-When metrics are enabled, you get access to:
+Full TypeScript support with comprehensive type definitions:
 
-```typescript
-interface TTSMetrics {
-  totalDuration: number;      // Total processing time
-  firstByteLatency: number;   // Time to first byte
-  firstAudioLatency: number;  // Time to first audio
-  totalBytes: number;         // Total audio bytes
-  averageChunkSize: number;   // Average audio chunk size
-  chunkCount: number;         // Number of audio chunks
-}
+```tsx
+import { 
+  useDeepgramTTS, 
+  DeepgramTTSOptions, 
+  TTSError, 
+  TTSMetrics,
+  ConnectionState 
+} from 'deepgram-tts-react';
+
+const options: DeepgramTTSOptions = {
+  apiKey: 'your-api-key',
+  model: 'aura-2-thalia-en',
+  debug: 'verbose',
+  enableMetrics: true,
+};
+
+const { speak, error }: DeepgramTTSReturn = useDeepgramTTS(options);
 ```
 
-## Browser Support
+## Browser Compatibility
 
-- Chrome (primary support)
-- Edge
-- Firefox
-- Safari (limited support)
+- Chrome/Chromium 66+
+- Firefox 60+
+- Safari 14.1+
+- Edge 79+
 
-## Development
+Requires:
+- WebSocket support
+- Web Audio API
+- ES2020 features
 
-```bash
-# Install dependencies
-npm install
+## Rate Limits
 
-# Build
-npm run build
+The hook automatically manages rate limits:
+- Text chunking respects character limits
+- Sequential processing prevents overwhelming the API
+- Automatic delays between chunks based on content length
+- Built-in retry logic for rate limit responses
 
-# Run tests
-npm test
+## Best Practices
 
-# Development mode
-npm run dev
-```
+1. **API Key Security**: Never expose API keys in client-side code in production
+2. **Error Handling**: Always implement error handlers for production use
+3. **Text Length**: For very long texts, consider showing progress indicators
+4. **Connection Management**: Handle connection state changes gracefully
+5. **Performance**: Enable metrics in development to optimize chunk sizes
+
+## Examples
+
+Check out the [test-app](./test-app) directory for a complete working example with:
+- Basic TTS implementation
+- Error handling
+- Connection management
+- Performance monitoring
+- UI best practices
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-MIT 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+- 📖 [Documentation](https://developers.deepgram.com/docs/tts)
+- 💬 [Discord Community](https://discord.gg/xWRaCDBtW4)
+- 🐛 [Issue Tracker](https://github.com/deepgram/deepgram-tts-react/issues)
+- 📧 [Contact Support](https://help.deepgram.com/)
+
+---
+
+Made with ❤️ by [Deepgram](https://deepgram.com) 
