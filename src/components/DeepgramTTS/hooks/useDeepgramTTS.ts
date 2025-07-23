@@ -19,8 +19,6 @@ import {
 } from '../../../utils/shared/config';
 
 interface TTSConfig extends BaseComponentConfig {
-  enableTextChunking?: boolean;
-  maxChunkSize?: number;
   model?: string;
   onConnectionChange?: (isConnected: boolean) => void;
   onError?: (error: TTSError) => void;
@@ -30,8 +28,6 @@ interface TTSConfig extends BaseComponentConfig {
 const DEFAULT_TTS_CONFIG: TTSConfig = {
   debug: 'hook',
   enableMetrics: METRICS_CONFIG.enableByDefault,
-  enableTextChunking: false,
-  maxChunkSize: METRICS_CONFIG.chunkSizeLimit,
   model: MODEL_CONFIG.tts.default
 };
 
@@ -119,16 +115,12 @@ export function useDeepgramTTS(
   // Memoized options to prevent unnecessary re-initializations
   const memoizedOptions = useMemo(() => ({
     enableMetrics: config.enableMetrics,
-    enableTextChunking: config.enableTextChunking,
-    maxChunkSize: config.maxChunkSize,
     debugConfig,
     onConnectionChange: config.onConnectionChange,
     onError: config.onError,
     onMetrics: config.onMetrics
   }), [
     config.enableMetrics,
-    config.enableTextChunking,
-    config.maxChunkSize,
     config.onConnectionChange,
     config.onError,
     config.onMetrics,
@@ -147,11 +139,9 @@ export function useDeepgramTTS(
   // Initialize protocol handler
   const initializeProtocolHandler = useCallback(() => {
     protocolHandlerRef.current = new ProtocolHandler({
-      debug: memoizedOptions.debugConfig.managerDebug,
-      enableTextChunking: config.enableTextChunking,
-      maxChunkSize: config.maxChunkSize
+      debug: memoizedOptions.debugConfig.managerDebug
     });
-  }, [memoizedOptions.debugConfig.managerDebug, config.enableTextChunking, config.maxChunkSize]);
+  }, [memoizedOptions.debugConfig.managerDebug]);
 
   // Utility function to send WebSocket messages
   const sendWebSocketMessage = useCallback((createMessage: () => DeepgramMessage | undefined | null) => {
@@ -373,6 +363,7 @@ export function useDeepgramTTS(
     };
   }, [
     apiKey,
+    config.model,
     log,
     memoizedOptions.enableMetrics,
     initializeMetrics,

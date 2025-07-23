@@ -15,6 +15,7 @@ function TTSPage() {
   } = useDeepgramTTS(
     import.meta.env.VITE_DEEPGRAM_API_KEY || '',
     {
+      model: 'aura-2-apollo-en',
       debug: 'verbose',
       enableMetrics: true
     }
@@ -58,8 +59,13 @@ function TTSPage() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold">Text-to-Speech Demo</h1>
-          <div className={`text-sm ${getStatusColor()}`}>
-            Status: {getStatusText()}
+          <div className="text-right">
+            <div className={`text-sm ${getStatusColor()}`}>
+              Status: {getStatusText()}
+            </div>
+            <div className="text-xs text-gray-400 mt-1">
+              Voice: Apollo (Male) - aura-2-apollo-en
+            </div>
           </div>
         </div>
 
@@ -111,6 +117,16 @@ function TTSPage() {
             </div>
           </div>
         )}
+
+        {/* Disconnect Button */}
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={disconnect}
+            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-colors"
+          >
+            Disconnect
+          </button>
+        </div>
       </div>
     </div>
   );

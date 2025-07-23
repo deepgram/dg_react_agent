@@ -79,7 +79,7 @@ interface DeepgramTTSOptions {
   model?: string;                    // TTS model (default: 'aura-2-thalia-en')
   debug?: boolean | DebugLevel;      // Debug logging level
   enableMetrics?: boolean;           // Enable performance metrics
-  maxChunkSize?: number;            // Maximum characters per chunk (default: 150)
+
   onConnectionChange?: (state: ConnectionState) => void;
   onError?: (error: TTSError) => void;
   onMetrics?: (metrics: TTSMetrics) => void;
@@ -107,15 +107,14 @@ interface DeepgramTTSReturn {
 
 ### Text Chunking
 
-The hook automatically splits large texts into manageable chunks to ensure smooth playback and respect API rate limits. You can customize the chunk size:
+The hook automatically splits large texts into manageable 250-character chunks to ensure smooth playback and respect API rate limits:
 
 ```tsx
 const { speak } = useDeepgramTTS({
-  apiKey: 'your-api-key',
-  maxChunkSize: 200,          // Characters per chunk (default: 150)
+  apiKey: 'your-api-key'
 });
 
-// This will be automatically chunked:
+// This will be automatically chunked into ~250 character segments:
 await speak("This is a very long text that will be automatically split into smaller chunks to ensure smooth playback and optimal performance...");
 ```
 
@@ -287,18 +286,17 @@ const { speak, connectionState } = useDeepgramTTS({
 
 ### Handling Long Texts
 
-The hook automatically handles long texts by chunking them appropriately:
+The hook automatically handles long texts by chunking them into 250-character segments:
 
 ```tsx
 const { speak } = useDeepgramTTS({
-  apiKey: 'your-api-key',
-  maxChunkSize: 200,  // Larger chunks for longer texts
+  apiKey: 'your-api-key'
 });
 
 // Automatically chunked and queued
 const longText = `
   This is a very long document that contains multiple paragraphs and sentences.
-  The hook will automatically split this into appropriate chunks while preserving
+  The hook will automatically split this into 250-character chunks while preserving
   sentence boundaries to ensure natural speech flow. Each chunk will be processed
   sequentially with proper timing to avoid rate limits and ensure smooth playback.
 `;

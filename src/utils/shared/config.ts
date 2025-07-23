@@ -30,7 +30,6 @@ export const DEBUG_CONFIG = {
 // Metrics Configuration
 export const METRICS_CONFIG = {
   enableByDefault: false,
-  chunkSizeLimit: 1000,
   flushInterval: 1000 // ms
 } as const;
 

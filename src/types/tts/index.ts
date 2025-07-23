@@ -9,8 +9,6 @@ export type DebugLevel = 'off' | 'hook' | 'manager' | 'verbose';
 
 export interface DeepgramTTSOptions {
   enableMetrics?: boolean;
-  enableTextChunking?: boolean;
-  maxChunkSize?: number;
   debug?: boolean | DebugLevel;
   onConnectionChange?: (isConnected: boolean) => void;
   onError?: (error: TTSError) => void;
