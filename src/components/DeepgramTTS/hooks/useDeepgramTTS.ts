@@ -423,7 +423,7 @@ export function useDeepgramTTS(
         // - Each chunk takes ~8.33 seconds to "use up"
         // - Queue next chunk after 2 seconds to ensure overlap
         if (i < chunks.length - 1) {
-          log(`⏳ Queueing next chunk in 2 seconds...`);
+          // log(`⏳ Queueing next chunk in 2 seconds...`);
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }

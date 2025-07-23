@@ -7,6 +7,7 @@ function TTSPage() {
   // Use the proper TTS hook from the src package
   const {
     speak,
+    stop,
     isConnected,
     isReady,
     isLoading,
@@ -117,16 +118,6 @@ function TTSPage() {
             </div>
           </div>
         )}
-
-        {/* Disconnect Button */}
-        <div className="mt-6 flex justify-center">
-          <button
-            onClick={disconnect}
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-colors"
-          >
-            Disconnect
-          </button>
-        </div>
       </div>
     </div>
   );

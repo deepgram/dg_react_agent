@@ -22,9 +22,7 @@ export class MetricsCollector {
     this.totalBytes = 0;
     this.chunkCount = 0;
     
-    if (this.options.debug) {
-      console.log('[MetricsCollector] Started collecting metrics');
-    }
+    // Removed verbose logging to keep console clean
   }
 
   public markFirstByte(): void {

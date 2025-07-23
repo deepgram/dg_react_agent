@@ -18,7 +18,7 @@ export class ProtocolHandler {
   }
 
   public createSpeakMessage(text: string): DeepgramTTSMessage {
-    this.log(`Creating speak message for text: ${text}`);
+    this.log(text);
     return {
       type: 'Speak',
       text

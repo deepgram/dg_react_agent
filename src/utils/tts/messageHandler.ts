@@ -28,9 +28,7 @@ export class MessageHandler {
   }
 
   private log(message: string): void {
-    if (this.handlers.debug) {
-      console.log(`[TTSMessageHandler] ${message}`);
-    }
+    // Removed verbose logging to keep console clean
   }
 
   public handleMessage(message: DeepgramTTSResponse | ArrayBuffer): void {
