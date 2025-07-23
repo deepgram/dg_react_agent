@@ -79,8 +79,7 @@ interface DeepgramTTSOptions {
   model?: string;                    // TTS model (default: 'aura-2-thalia-en')
   debug?: boolean | DebugLevel;      // Debug logging level
   enableMetrics?: boolean;           // Enable performance metrics
-  enableTextChunking?: boolean;      // Enable automatic text chunking
-  maxChunkSize?: number;            // Maximum characters per chunk
+  maxChunkSize?: number;            // Maximum characters per chunk (default: 150)
   onConnectionChange?: (state: ConnectionState) => void;
   onError?: (error: TTSError) => void;
   onMetrics?: (metrics: TTSMetrics) => void;
@@ -108,13 +107,12 @@ interface DeepgramTTSReturn {
 
 ### Text Chunking
 
-The hook automatically splits large texts into manageable chunks to ensure smooth playback and respect API rate limits.
+The hook automatically splits large texts into manageable chunks to ensure smooth playback and respect API rate limits. You can customize the chunk size:
 
 ```tsx
 const { speak } = useDeepgramTTS({
   apiKey: 'your-api-key',
-  enableTextChunking: true,    // Enable chunking (default: true)
-  maxChunkSize: 150,          // Characters per chunk (default: 150)
+  maxChunkSize: 200,          // Characters per chunk (default: 150)
 });
 
 // This will be automatically chunked:
@@ -181,6 +179,74 @@ const { speak, metrics } = useDeepgramTTS({
     });
   }
 });
+```
+
+## Next.js Integration
+
+For Next.js applications, use the provided adapter to handle SSR/hydration issues:
+
+### Component Adapter
+
+```tsx
+import { NextDeepgramTTS } from 'deepgram-tts-react';
+
+export default function MyPage() {
+  return (
+    <NextDeepgramTTS
+      apiKey={process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY}
+      model="aura-2-thalia-en"
+      debug="verbose"
+    >
+      {({ speak, stop, isLoading, isConnected, error, isClientReady }) => (
+        <div>
+          {!isClientReady ? (
+            <p>Loading TTS...</p>
+          ) : (
+            <>
+              <button 
+                onClick={() => speak('Hello from Next.js!')}
+                disabled={isLoading || !isConnected}
+              >
+                {isLoading ? 'Speaking...' : 'Speak'}
+              </button>
+              <button onClick={stop} disabled={!isLoading}>
+                Stop
+              </button>
+              {error && <p>Error: {error.message}</p>}
+              <p>Status: {isConnected ? 'Connected' : 'Disconnected'}</p>
+            </>
+          )}
+        </div>
+      )}
+    </NextDeepgramTTS>
+  );
+}
+```
+
+### Hook Adapter
+
+```tsx
+import { useNextDeepgramTTS } from 'deepgram-tts-react';
+
+export default function MyComponent() {
+  const { speak, stop, isLoading, isConnected, error, isClientReady } = useNextDeepgramTTS({
+    apiKey: process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY,
+    model: 'aura-2-thalia-en'
+  });
+
+  if (!isClientReady) {
+    return <div>Loading TTS...</div>;
+  }
+
+  return (
+    <button 
+      onClick={() => speak('Hello!')}
+      disabled={isLoading || !isConnected}
+    >
+      {isLoading ? 'Speaking...' : 'Speak'}
+    </button>
+  );
+}
 ```
 
 ## Advanced Usage

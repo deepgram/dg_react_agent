@@ -7,6 +7,9 @@
 // TTS functionality
 export { useDeepgramTTS } from './components/DeepgramTTS';
 
+// Next.js adapter
+export { NextDeepgramTTS, useNextDeepgramTTS } from './components/DeepgramTTS/adapters/next';
+
 // TTS Types
 export type {
   DeepgramTTSOptions,

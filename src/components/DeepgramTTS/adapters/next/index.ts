@@ -1,0 +1,1 @@
+export { NextDeepgramTTS, useNextDeepgramTTS } from './NextAdapter'; 
