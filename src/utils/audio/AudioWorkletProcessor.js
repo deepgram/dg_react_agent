@@ -10,7 +10,7 @@ class MicrophoneProcessor extends AudioWorkletProcessor {
     
     // State
     this.isRecording = false;
-    this.sampleRate = 48000; // Target sample rate
+    this.sampleRate = 16000; // Target sample rate
     this.bufferSize = 4096;  // Buffer size in samples
     this.buffer = new Float32Array(this.bufferSize);
     this.bufferIndex = 0;

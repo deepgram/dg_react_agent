@@ -8,13 +8,13 @@ import { AudioProcessingOptions } from '../../types/common/audio';
  * Creates an AudioBuffer from raw Linear16 PCM data
  * @param audioContext The Web Audio API AudioContext
  * @param data ArrayBuffer containing Linear16 PCM audio data
- * @param sampleRate Sample rate of the audio data (default: 48000Hz)
+ * @param sampleRate Sample rate of the audio data (default: 16000Hz)
  * @returns AudioBuffer ready for playback
  */
 export function createAudioBuffer(
   audioContext: AudioContext, 
   data: ArrayBuffer, 
-  sampleRate: number = 48000
+  sampleRate: number = 16000
 ): AudioBuffer | undefined {
   const audioDataView = new Int16Array(data);
   if (audioDataView.length === 0) {
@@ -72,7 +72,7 @@ export function playAudioBuffer(
  * Some browsers require proper audio container headers
  */
 export function createWAVHeader(
-  sampleRate: number = 48000,
+  sampleRate: number = 16000,
   channels: number = 1,
   bitsPerSample: number = 16
 ): Uint8Array {
@@ -132,7 +132,7 @@ export function getBrowserOptimizedConfig(): AudioProcessingOptions & {
   if (browser.isEdge) {
     // Edge needs more conservative settings
     return {
-      sampleRate: 48000,
+      sampleRate: 16000,
       channels: 1,
       encoding: 'linear16',
       bufferSize: 8192,
@@ -142,7 +142,7 @@ export function getBrowserOptimizedConfig(): AudioProcessingOptions & {
   
   // Chrome and other browsers can handle more aggressive low-latency settings
   return {
-    sampleRate: 48000,
+    sampleRate: 16000,
     channels: 1,
     encoding: 'linear16',
     bufferSize: 4096,

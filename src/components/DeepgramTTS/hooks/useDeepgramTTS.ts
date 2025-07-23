@@ -400,7 +400,7 @@ export function useDeepgramTTS(
     try {
       setIsLoading(true);
       const chunks = splitIntoChunks(text);
-      log(`🗣️ Speaking text in ${chunks.length} chunks`);
+      log(`🗣️ Speaking text in ${chunks.length} chunks (${text.length} total characters)`);
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
@@ -428,10 +428,13 @@ export function useDeepgramTTS(
           });
         });
 
-        // If there are more chunks, wait 20 seconds before processing the next one
+        // If there are more chunks, wait 2 seconds before processing the next one
+        // With 250-char chunks at 30 chars/second target rate:
+        // - Each chunk takes ~8.33 seconds to "use up"
+        // - Queue next chunk after 2 seconds to ensure overlap
         if (i < chunks.length - 1) {
-          log(`⏳ Waiting 20 seconds before processing next chunk...`);
-          await new Promise(resolve => setTimeout(resolve, 20000));
+          log(`⏳ Queueing next chunk in 2 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
     } catch (error) {

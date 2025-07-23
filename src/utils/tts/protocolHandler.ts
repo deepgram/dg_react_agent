@@ -21,8 +21,7 @@ export class ProtocolHandler {
   }
 
   public createSpeakMessage(text: string): DeepgramTTSMessage {
-    this.chunkCount++;
-    this.log(`Creating speak message from chunk ${this.chunkCount}`);
+    this.log(`Creating speak message for text: ${text}`);
     return {
       type: 'Speak',
       text

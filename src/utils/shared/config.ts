@@ -6,7 +6,7 @@
 
 // Audio Configuration
 export const AUDIO_CONFIG = {
-  sampleRate: 48000,
+  sampleRate: 16000,
   encoding: 'linear16',
   output: {
     channels: 1,

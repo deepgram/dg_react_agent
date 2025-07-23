@@ -3,10 +3,10 @@
  * - Preserves sentence boundaries
  * - Handles common abbreviations
  * - Respects punctuation
- * - Enforces max chunk size
+ * - Enforces max chunk size of 250 chars for optimal playback
  */
 
-const MAX_CHUNK_SIZE = 1000;
+const MAX_CHUNK_SIZE = 250;
 
 // Common abbreviations that shouldn't be treated as sentence endings
 const ABBREVIATIONS = [
