@@ -72,8 +72,7 @@ await speak('Hello, this is Deepgram TTS!');
 const { speak, metrics } = useDeepgramTTS({
   apiKey: 'YOUR_API_KEY',
   model: 'aura-2-apollo-en',
-  enableTextChunking: true,
-  maxChunkSize: 200,
+  maxChunkSize: 200,           // Customize chunk size (default: 150)
   onError: (error) => console.error('TTS Error:', error),
   onMetrics: (metrics) => console.log('Performance:', metrics)
 });
